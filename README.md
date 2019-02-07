@@ -1,1 +1,1 @@
-# cyclegan-plus-plus
+# Photo ↔ Art Via Quadratic Potential
