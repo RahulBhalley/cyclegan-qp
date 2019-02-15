@@ -1,1 +1,2 @@
-# Photo ↔ Art Via Quadratic Potential
+# Artist Style Transfer Via Quadratic Potential
+
