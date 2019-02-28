@@ -21,18 +21,6 @@ The code was tested on following versions of respective libraries:
 - PyTorch 1.0.1
 - torchvision 0.2.1
 
-#### System specifications
-
-##### Inference
-
-- macOS Mojave (Version 10.14.3)
-- 2.9 GHz Intel Core i5
-- 8 GB 2133 MHz LPDDR3
-
-##### Training
-
-- NVIDIA K80 GPU (24 GB Memory)
-
 ### Usage
 
 All the experiments may be performed by running `python main.py` command in terminal. All you need to make changes is the variables in `config.py` file. For instance, set `TRAIN = True` for training or change `BATCH_SIZE`, et cetera for more experimentations.
