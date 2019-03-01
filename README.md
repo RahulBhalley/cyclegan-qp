@@ -3,7 +3,6 @@
 [**Rahul Bhalley**](https://github.com/rahulbhalley) and [Jianlin Su](https://github.com/bojone)
 
 [arXiv paper](https://arxiv.org/abs/1902.11108)
-___
 
 ### Abstract
 
