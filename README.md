@@ -1,8 +1,9 @@
 # Artist Style Transfer Via Quadratic Potential
 
 [**Rahul Bhalley**](https://github.com/rahulbhalley) and [Jianlin Su](https://github.com/bojone)
-___
+
 [arXiv paper](https://arxiv.org/abs/1902.11108)
+___
 
 ### Abstract
 
