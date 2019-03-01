@@ -9,7 +9,7 @@ If you find our work, or this repository, please consider citing it with followi
 @article{bhalley2019artist,
   title={Artist Style Transfer Via Quadratic Potential},
   author={Bhalley, Rahul and Su, Jianlin},
-  journal={arXiv preprint arXiv:1902.xxxxx},
+  journal={arXiv preprint arXiv:1902.11108},
   year={2019}
 }
 ```
