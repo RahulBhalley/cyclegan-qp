@@ -41,4 +41,4 @@ All the experiments may be performed by running `python main.py` command in term
 
 ### Contact
 
-For queries contact me at `[first name][second name][at][protonmail][dot][com]`.
+For queries contact me at `rahulbhalley@protonmail.com`.
