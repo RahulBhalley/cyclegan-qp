@@ -22,10 +22,10 @@ Please consider citing this work with the following BibTex:
 
 The arrangement of all images in each grid (from left to right) a) original image, b) Paul Cézanne, c) Claude Monet, d) Ukiyo-e, and e) Vincent Van Gogh
 
-#### Stylized images
+#### Stylized 📸
 ![](https://github.com/rahulbhalley/cyclegan-plus-plus/raw/master/assets/grid_sty.jpg)
 
-#### Recovered Images
+#### Recovered 📸
 ![](https://github.com/rahulbhalley/cyclegan-plus-plus/raw/master/assets/grid_rec.jpg)
 
 ### Prerequisites
