@@ -10,7 +10,7 @@ In this paper we address the problem of artist style transfer where the painting
 
 If you find our work, or this repository helpful, please consider citing our work with the following BibTex:
 ```
-@article{bhalley2019artist,
+@article{bhalley2019cyclegan++,
   title={Artist Style Transfer Via Quadratic Potential},
   author={Bhalley, Rahul and Su, Jianlin},
   journal={arXiv preprint arXiv:1902.11108},
