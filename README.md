@@ -20,11 +20,11 @@ Please consider citing this work with the following BibTex:
 
 ### Prerequisites
 
-This code was tested on following versions of respective libraries:
+This code was tested in following environment setting:
 
 - Python 3.7.2
 - PyTorch 1.0.1
-- torchvision 0.2.1
+- Torchvision 0.2.1
 
 ### Usage
 
