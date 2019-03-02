@@ -69,8 +69,8 @@ Here I provide a list of variables for modification to perform experiments with 
 
 ##### Quadratic Potential
 
-- `LAMBDA` - see equation (1) in [paper]((https://arxiv.org/abs/1902.11108)). Default: `10.0`.
-- `NORM` - see equation (2) in [paper]((https://arxiv.org/abs/1902.11108)). Possible values: `"l1"`, `"l2"`. Default: `"l1"`.
+- `LAMBDA` - see equation (1) in [paper](https://arxiv.org/abs/1902.11108). Default: `10.0`.
+- `NORM` - see equation (2) in [paper](https://arxiv.org/abs/1902.11108). Possible values: `"l1"`, `"l2"`. Default: `"l1"`.
 
 ##### CycleGAN++
 
