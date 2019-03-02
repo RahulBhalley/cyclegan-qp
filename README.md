@@ -49,7 +49,7 @@ Now `ukiyoe2photo` dataset will be downloaded and unzipped in `cyclegan-plus-plu
 
 #### Training & Inference
 
-To train the network set `TRAIN = True` in [`config.py`](https://github.com/rahulbhalley/cyclegan-plus-plus/blob/master/config.py) and for inference set it to `False`. Then one may only need to execute the following command in terminal.
+To train the network set `TRAIN = True` in [config.py](https://github.com/rahulbhalley/cyclegan-plus-plus/blob/master/config.py) and for inference set it to `False`. Then one may only need to execute the following command in terminal.
 ```
 python main.py
 ```
