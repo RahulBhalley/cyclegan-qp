@@ -8,7 +8,7 @@
 
 In this paper we address the problem of artist style transfer where the painting style of a given artist is applied on a real world photograph. We train our neural networks in adversarial setting via recently introduced quadratic potential divergence for stable learning process. To further improve the quality of generated artist stylized images we also integrate some of the recently introduced deep learning techniques in our method. To our best knowledge this is the first attempt towards artist style transfer via quadratic potential divergence. We provide some stylized image samples in the supplementary material. The source code for experimentation was written in [PyTorch](https://pytorch.org) and is available online in my [GitHub repository](https://github.com/rahulbhalley/cyclegan-plus-plus).
 
-Please consider citing this work with the following BibTex:
+If you find our work, or this repository helpful, please consider citing our work with the following BibTex:
 ```
 @article{bhalley2019artist,
   title={Artist Style Transfer Via Quadratic Potential},
