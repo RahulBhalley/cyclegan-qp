@@ -22,9 +22,9 @@ If you find our work, or this repository helpful, please consider citing our wor
 
 This code was tested in following environment setting:
 
-- Python 3.7.2
-- PyTorch 1.0.1
-- Torchvision 0.2.1
+- Python (version >= 3.6.0)
+- [PyTorch](https://github.com/pytorch/pytorch) (version >= 1.0.0)
+- [Torchvision](https://github.com/pytorch/vision) (version = 0.2.1)
 
 ### Usage
 
