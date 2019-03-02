@@ -79,8 +79,8 @@ Here I provide a list of variables for modification to perform experiments with 
 
 ##### Network
 
-- `N_CHANNELS` - number of channels of images in dataset. `3` if RGB or `1` if grayscale. Default: `3`.
-- `UPSAMPLE` - `True` to use (Odena et al., 2016)[https://distill.pub/2016/deconv-checkerboard/] technique but `False` to use transpose convolution in generator networks. Default: `True`.
+- `N_CHANNELS` - number of channels of images in dataset. Set to `3` for RGB and `1` for grayscale. Default: `3`.
+- `UPSAMPLE` - set `True` to use ([Odena et al., 2016](https://distill.pub/2016/deconv-checkerboard/)) technique but `False` to use vanilla transpose convolution layers in generator networks. Default: `True`.
 
 ##### Training
 
@@ -89,9 +89,9 @@ Here I provide a list of variables for modification to perform experiments with 
 - `LR` - learning rate. Default: `2e-4`.
 - `BETA1` - hyper-parameter of Adam optimizer. Default: `0.5`.
 - `BETA2` - hyper-parameter of Adam optimizer. Default: `0.999`.
-- `BEGIN_ITER` - if `0` the train begins from start otherwise (`> 0`) training continues from `BEGIN_ITER`th checkpoint. Default: `0`.
-- `END_ITER` - the ending iteration number. Default: `15000`.
-- `TRAIN` - if `True` then the networks is trained but if `False` then the network is set to inference mode (for more inference settings see next subsection: *Inference*). Default: `True`.
+- `BEGIN_ITER` - if `0` the train begins from start but when set to `> 0` then training continues from `BEGIN_ITER`th checkpoint. Default: `0`.
+- `END_ITER` - number of iteration for training. Default: `15000`.
+- `TRAIN` - set `True` for training CycleGAN++ but `False` to perform inference (for more inference configurations see next subsection). Default: `True`.
 
 ##### Inference
 
@@ -101,7 +101,7 @@ Here I provide a list of variables for modification to perform experiments with 
 - `IN_IMG_DIR` - name of directory containing `IMG_NAME`. Default: `"images"`.
 - `OUT_STY_DIR` - name of directory to save inferred `IMG_NAME`. Default: `"sty"`.
 - `OUT_REC_DIR` - name of directory to save recovered (original) `IMG_NAME`. Default: `"rec"`.
-- `IMG_SIZE` - If `None` then infers the original sized `IMG_NAME` else infers with `IMG_SIZE`. Type: `int`. Default: `None`.
+- `IMG_SIZE` - set `None` to infer with the original sized `IMG_NAME` or set some integral value to infer with `IMG_SIZE`. Default: `None`.
 
 ##### Logs
 
@@ -110,7 +110,14 @@ Here I provide a list of variables for modification to perform experiments with 
 
 ### Results
 
-The images in each column (from left to right) corresponds to a) original image, b) Paul Cézanne, c) Claude Monet, d) Ukiyo-e, and e) Vincent Van Gogh. And each row correspond to a different image.
+The images in each column (from left to right) corresponds to:
+- Original image
+- Paul Cézanne
+- Claude Monet
+- Ukiyo-e
+- Vincent Van Gogh. 
+
+And each row contains a different image.
 
 #### Real Image to Stylized Image
 ![](https://github.com/rahulbhalley/cyclegan-plus-plus/raw/master/assets/grid_sty.jpg)
