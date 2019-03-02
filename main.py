@@ -49,7 +49,7 @@ except:
 
 if TRAIN:
     # Make experiments reproducible
-    _ = torch.manual_seed(12345)
+    _ = torch.manual_seed(RANDOM_SEED)
     
     # Load the datasets
     X_set, Y_set = load_data()

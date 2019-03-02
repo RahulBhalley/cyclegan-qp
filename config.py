@@ -27,8 +27,8 @@ CKPT_DIR = "checkpoints"
 SAMPLE_DIR = "samples"
 
 # Quadratic Potential
-NORM = "l1"
 LAMBDA = 10.0
+NORM = "l1"
 
 # CycleGAN++
 CYC_WEIGHT = 10.0
@@ -39,6 +39,7 @@ N_CHANNELS = 3
 UPSAMPLE = True
 
 # Training
+RANDOM_SEED = 12345
 BATCH_SIZE = 4
 LR = 2e-4
 BETA1 = 0.5
@@ -52,9 +53,9 @@ INFER_ITER = 15000
 INFER_STYLE = "vg"
 IMG_NAME = "image.jpg"
 IN_IMG_DIR = "images"
-OUT_REC_DIR = "rec"
 OUT_STY_DIR = "sty"
-IMG_SIZE = None  # If `None` then stylizes original size `IMG_NAME
+OUT_REC_DIR = "rec"
+IMG_SIZE = None  # If `None` then stylizes original size `IMG_NAME`
 
 # Logs
 ITERS_PER_LOG = 100

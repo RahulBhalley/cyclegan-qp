@@ -18,6 +18,96 @@ Please consider citing this work with the following BibTex:
 }
 ```
 
+### Prerequisites
+
+This code was tested on following versions of respective libraries:
+
+- Python 3.7.2
+- PyTorch 1.0.1
+- torchvision 0.2.1
+
+### Usage
+
+First clone this repository:
+```
+git clone https://github.com/rahulbhalley/cyclegan-plus-plus.git
+```
+
+#### Getting Datasets
+
+Enter into the `cyclegan-plus-plus` directory via terminal.
+```
+cd cyclegan-plus-plus
+```
+
+To download the datasets (for instance, `ukiyoe2photo`) run:
+```
+bash download_dataset.sh ukiyoe2photo
+```
+
+Now `ukiyoe2photo` dataset will be downloaded and unzipped in `cyclegan-plus-plus/datasets/ukiyoe2photo` directory.
+
+#### Training & Inference
+
+To train the network set `TRAIN = True` in `config.py` and for inference set it to `False`. Then one may only need to execute the following command in terminal.
+```
+python main.py
+```
+
+#### Configurations
+
+Here I provide a list of variables for modification to perform experiments with different settings.
+
+##### Data
+
+- `DATASET_DIR` - name of directory containing dataset. Default: `"datasets"`.
+- `DATASET_NAME` - name of dataset to use. Default: `"vangogh2photo"`.
+- `LOAD_DIM` - sets the size of images to load. Default: `286`.
+- `CROP_DIM` - square crops the images from center. Default: `256`.
+- `CKPT_DIR` - name of directory to save checkpoints in. Default: `"checkpoints"`.
+- `SAMPLE_DIR` - directory name where inferred samples will be saved. Default: `"samples"`.
+
+##### Quadratic Potential
+
+- `LAMBDA` - see equation (1) in [paper]((https://arxiv.org/abs/1902.11108)). Default: `10.0`.
+- `NORM` - see equation (2) in [paper]((https://arxiv.org/abs/1902.11108)). Possible values: `"l1"`, `"l2"`. Default: `"l1"`.
+
+##### CycleGAN++
+
+- `CYC_WEIGHT` - cycle consistency weight. Default: `10.0`.
+- `ID_WEIGHT` - identity weight. Default: `0.5`.
+
+##### Network
+
+- `N_CHANNELS` - number of channels of images in dataset. `3` if RGB or `1` if grayscale. Default: `3`.
+- `UPSAMPLE` - `True` to use (Odena et al., 2016)[https://distill.pub/2016/deconv-checkerboard/] technique but `False` to use transpose convolution in generator networks. Default: `True`.
+
+##### Training
+
+- `RANDOM_SEED` - random seed to reproduce the experiments. Default: `12345`.
+- `BATCH_SIZE` - batch size for training. Default: `4`.
+- `LR` - learning rate. Default: `2e-4`.
+- `BETA1` - hyper-parameter of Adam optimizer. Default: `0.5`.
+- `BETA2` - hyper-parameter of Adam optimizer. Default: `0.999`.
+- `BEGIN_ITER` - if `0` the train begins from start otherwise (`> 0`) training continues from `BEGIN_ITER`th checkpoint. Default: `0`.
+- `END_ITER` - the ending iteration number. Default: `15000`.
+- `TRAIN` - if `True` then the networks is trained but if `False` then the network is set to inference mode (for more inference settings see next subsection: *Inference*). Default: `True`.
+
+##### Inference
+
+- `INFER_ITER` - performs inference by loading parameters from this checkpoint. Default: `15000`.
+- `INFER_STYLE` - style to be transferred on images. Possible values: `"ce"`, `"mo"`, `"uk"`, `"vg"`. Default: `"vg"`.
+- `IMG_NAME` - name of image to be performed inference on. Default: `"image.jpg"`.
+- `IN_IMG_DIR` - name of directory containing `IMG_NAME`. Default: `"images"`.
+- `OUT_STY_DIR` - name of directory to save inferred `IMG_NAME`. Default: `"sty"`.
+- `OUT_REC_DIR` - name of directory to save recovered (original) `IMG_NAME`. Default: `"rec"`.
+- `IMG_SIZE` - If `None` then infers the original sized `IMG_NAME` else infers with `IMG_SIZE`. Type: `int`. Default: `None`.
+
+##### Logs
+
+- `ITERS_PER_LOG` - iterations duration at which screen logs should be made. Default: `100`
+- `ITERS_PER_CKPT` - iterations duration at which checkpoints should be saved. Default: `1000`
+
 ### Results
 
 The images in each column (from left to right) corresponds to a) original image, b) Paul Cézanne, c) Claude Monet, d) Ukiyo-e, and e) Vincent Van Gogh. And each row correspond to a different image.
@@ -27,17 +117,6 @@ The images in each column (from left to right) corresponds to a) original image,
 
 #### Stylized Image to Real Image
 ![](https://github.com/rahulbhalley/cyclegan-plus-plus/raw/master/assets/grid_rec.jpg)
-
-### Prerequisites
-
-The code was tested on following versions of respective libraries:
-
-- PyTorch 1.0.1
-- torchvision 0.2.1
-
-### Usage
-
-All the experiments may be performed by running `python main.py` command in terminal. All you need to make changes is the variables in `config.py` file. For instance, set `TRAIN = True` for training or change `BATCH_SIZE`, et cetera for more experimentations.
 
 ### Contact
 
