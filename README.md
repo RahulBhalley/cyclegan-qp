@@ -20,7 +20,7 @@ Please consider citing this work with the following BibTex:
 
 ### Results
 
-The arrangement of all images in each grid (from left to right) a) original image, b) Paul Cézanne, c) Claude Monet, d) Ukiyo-e, and e) Vincent Van Gogh
+The images in each column (from left to right) corresponds to a) original image, b) Paul Cézanne, c) Claude Monet, d) Ukiyo-e, and e) Vincent Van Gogh. And each row correspond to a different image.
 
 #### Real Image \\(\rightarrow\\) Stylized Image
 ![](https://github.com/rahulbhalley/cyclegan-plus-plus/raw/master/assets/grid_sty.jpg)
