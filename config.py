@@ -46,12 +46,12 @@ BETA1 = 0.5
 BETA2 = 0.999
 BEGIN_ITER = 0
 END_ITER = 15000
-TRAIN = True  # `False` runs `infer` function & `True` runs `train` function
+TRAIN = False  # `False` runs `infer` function & `True` runs `train` function
 
 # Inference
 INFER_ITER = 15000
 INFER_STYLE = "vg"
-IMG_NAME = "image.jpg"
+IMG_NAME = "sun_flower.jpg"
 IN_IMG_DIR = "images"
 OUT_STY_DIR = "sty"
 OUT_REC_DIR = "rec"
@@ -59,4 +59,4 @@ IMG_SIZE = None  # If `None` then stylizes original size `IMG_NAME`
 
 # Logs
 ITERS_PER_LOG = 100
-ITERS_PER_CKPT = 1000`
+ITERS_PER_CKPT = 1000

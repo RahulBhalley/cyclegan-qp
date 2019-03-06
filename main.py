@@ -37,8 +37,8 @@ try:
             if not os.path.exists(os.path.join(SAMPLE_DIR, style)):
                 os.mkdir(os.path.join(SAMPLE_DIR, style))
                 # Make three directories
-                os.mkdir(os.path.join(SAMPLE_DIR, style, "sty"))  # Stylized images here
-                os.mkdir(os.path.join(SAMPLE_DIR, style, "rec"))  # Reconstructed images here
+                os.mkdir(os.path.join(SAMPLE_DIR, style, OUT_STY_DIR))  # Stylized images here
+                os.mkdir(os.path.join(SAMPLE_DIR, style, OUT_REC_DIR))  # Reconstructed images here
 except:
     print("Directories already exist!")
 

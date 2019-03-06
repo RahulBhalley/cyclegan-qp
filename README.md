@@ -6,17 +6,19 @@
 
 ### Abstract
 
-In this paper we address the problem of artist style transfer where the painting style of a given artist is applied on a real world photograph. We train our neural networks in adversarial setting via recently introduced quadratic potential divergence for stable learning process. To further improve the quality of generated artist stylized images we also integrate some of the recently introduced deep learning techniques in our method. To our best knowledge this is the first attempt towards artist style transfer via quadratic potential divergence. We provide some stylized image samples in the supplementary material. The source code for experimentation was written in [PyTorch](https://pytorch.org) and is available online in my [GitHub repository](https://github.com/rahulbhalley/cyclegan-plus-plus).
+In this paper we address the problem of artist style transfer where the painting style of a given artist is applied on a real world photograph. We train our neural networks in adversarial setting via recently introduced quadratic potential divergence for stable learning process. To further improve the quality of generated artist stylized images we also integrate some of the recently introduced deep learning techniques in our method. To our best knowledge this is the first attempt towards artist style transfer via quadratic potential divergence. We provide some stylized image samples in the supplementary material. The source code for experimentation was written in [PyTorch](https://pytorch.org) and is available online in my [GitHub repository](https://github.com/rahulbhalley/cyclegan-qp).
 
 If you find our work, or this repository helpful, please consider citing our work with the following BibTex:
 ```
-@article{bhalley2019cyclegan++,
+@article{bhalley2019artist,
   title={Artist Style Transfer Via Quadratic Potential},
   author={Bhalley, Rahul and Su, Jianlin},
   journal={arXiv preprint arXiv:1902.11108},
   year={2019}
 }
 ```
+
+**NOTE: Pre-trained models are available in [`Google Drive`](https://drive.google.com/drive/folders/1IJ0OswLFD_-P2wgDg6RJhf29AQxYUc0_?usp=sharing). Please download it in the root directory of this repository.**
 
 ### Prerequisites
 
@@ -30,14 +32,14 @@ This code was tested in following environment setting:
 
 First clone this repository:
 ```
-git clone https://github.com/rahulbhalley/cyclegan-plus-plus.git
+git clone https://github.com/rahulbhalley/cyclegan-qp.git
 ```
 
 #### Getting Datasets
 
-Enter into the `cyclegan-plus-plus` directory via terminal.
+Enter into the `cyclegan-qp` directory via terminal.
 ```
-cd cyclegan-plus-plus
+cd cyclegan-qp
 ```
 
 To download the datasets (for instance, `ukiyoe2photo`) run:
@@ -45,18 +47,18 @@ To download the datasets (for instance, `ukiyoe2photo`) run:
 bash download_dataset.sh ukiyoe2photo
 ```
 
-Now `ukiyoe2photo` dataset will be downloaded and unzipped in `cyclegan-plus-plus/datasets/ukiyoe2photo` directory.
+Now `ukiyoe2photo` dataset will be downloaded and unzipped in `cyclegan-qp/datasets/ukiyoe2photo` directory.
 
 #### Training & Inference
 
-To train the network set `TRAIN = True` in [config.py](https://github.com/rahulbhalley/cyclegan-plus-plus/blob/master/config.py) and for inference set it to `False`. Then one may only need to execute the following command in terminal.
+To train the network set `TRAIN = True` in [config.py](https://github.com/rahulbhalley/cyclegan-qp/blob/master/config.py) and for inference set it to `False`. Then one may only need to execute the following command in terminal.
 ```
 python main.py
 ```
 
 #### Configurations
 
-Following is a list of configurable variables (in [config.py](https://github.com/rahulbhalley/cyclegan-plus-plus/blob/master/config.py)) to perform experiments with different settings.
+Following is a list of configurable variables (in [config.py](https://github.com/rahulbhalley/cyclegan-qp/blob/master/config.py)) to perform experiments with different settings.
 
 ##### Data
 
@@ -72,7 +74,7 @@ Following is a list of configurable variables (in [config.py](https://github.com
 - `LAMBDA` - see equation (1) in [paper](https://arxiv.org/abs/1902.11108). Default: `10.0`.
 - `NORM` - see equation (2) in [paper](https://arxiv.org/abs/1902.11108). Possible values: `"l1"`, `"l2"`. Default: `"l1"`.
 
-##### CycleGAN++
+##### CycleGAN-QP
 
 - `CYC_WEIGHT` - cycle consistency weight. Default: `10.0`.
 - `ID_WEIGHT` - identity weight. Default: `0.5`.
@@ -91,7 +93,7 @@ Following is a list of configurable variables (in [config.py](https://github.com
 - `BETA2` - hyper-parameter of Adam optimizer. Default: `0.999`.
 - `BEGIN_ITER` - if `0` the train begins from start but when set to `> 0` then training continues from `BEGIN_ITER`th checkpoint. Default: `0`.
 - `END_ITER` - number of iteration for training. Default: `15000`.
-- `TRAIN` - set `True` for training CycleGAN++ but `False` to perform inference (for more inference configurations see next subsection). Default: `True`.
+- `TRAIN` - set `True` for training CycleGAN-QP but `False` to perform inference (for more inference configurations see next subsection). Default: `True`.
 
 ##### Inference
 
@@ -120,10 +122,10 @@ The images in each column (from left to right) corresponds to:
 And each row contains a different image.
 
 #### Real Image to Stylized Image
-![](https://github.com/rahulbhalley/cyclegan-plus-plus/raw/master/assets/grid_sty.jpg)
+![](https://github.com/rahulbhalley/cyclegan-qp/raw/master/assets/grid_sty.jpg)
 
 #### Stylized Image to Real Image
-![](https://github.com/rahulbhalley/cyclegan-plus-plus/raw/master/assets/grid_rec.jpg)
+![](https://github.com/rahulbhalley/cyclegan-qp/raw/master/assets/grid_rec.jpg)
 
 ### Contact
 
