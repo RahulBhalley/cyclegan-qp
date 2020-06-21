@@ -114,7 +114,7 @@ Following is a list of configurable variables (in [config.py](https://github.com
 
 The images in each column (from left to right) corresponds to:
 - Original image
-- Paul Cézanne
+- Paul Cézanne
 - Claude Monet
 - Ukiyo-e
 - Vincent Van Gogh. 
@@ -126,7 +126,3 @@ And each row contains a different image.
 
 #### Stylized Image to Real Image
 ![](https://github.com/rahulbhalley/cyclegan-qp/raw/master/assets/grid_rec.jpg)
-
-### Contact
-
-For queries contact me at `rahulbhalley@protonmail.com`.
