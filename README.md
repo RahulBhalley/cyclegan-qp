@@ -51,14 +51,14 @@ Now `ukiyoe2photo` dataset will be downloaded and unzipped in `cyclegan-qp/datas
 
 #### Training & Inference
 
-To train the network set `TRAIN = True` in [config.py](https://github.com/rahulbhalley/cyclegan-qp/blob/master/config.py) and for inference set it to `False`. Then one may only need to execute the following command in terminal.
+To train the network set `TRAIN = True` in [config.py](https://github.com/rahulbhalley/cyclegan-qp/blob/main/config.py) and for inference set it to `False`. Then one may only need to execute the following command in terminal.
 ```
 python main.py
 ```
 
 #### Configurations
 
-Following is a list of configurable variables (in [config.py](https://github.com/rahulbhalley/cyclegan-qp/blob/master/config.py)) to perform experiments with different settings.
+Following is a list of configurable variables (in [config.py](https://github.com/rahulbhalley/cyclegan-qp/blob/main/config.py)) to perform experiments with different settings.
 
 ##### Data
 
@@ -122,7 +122,7 @@ The images in each column (from left to right) corresponds to:
 And each row contains a different image.
 
 #### Real Image to Stylized Image
-![](https://github.com/rahulbhalley/cyclegan-qp/raw/master/assets/grid_sty.jpg)
+![](https://github.com/rahulbhalley/cyclegan-qp/raw/main/assets/grid_sty.jpg)
 
 #### Stylized Image to Real Image
-![](https://github.com/rahulbhalley/cyclegan-qp/raw/master/assets/grid_rec.jpg)
+![](https://github.com/rahulbhalley/cyclegan-qp/raw/main/assets/grid_rec.jpg)
