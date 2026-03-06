@@ -3,11 +3,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.utils as vutils
-import torchvision.transforms as transforms
-from PIL import Image
 import os
-import sys
 import logging
 from contextlib import nullcontext
 
@@ -22,20 +18,9 @@ logger = logging.getLogger(__name__)
 
 def setup_directories():
     """Ensure all necessary directories exist."""
-    dirs_to_make = []
-    if config.TRAIN:
-        dirs_to_make.append(config.CKPT_DIR)
-        for style in config.STYLE_NAMES:
-            dirs_to_make.append(os.path.join(config.CKPT_DIR, style))
-    else:
-        dirs_to_make.append(config.SAMPLE_DIR)
-        for style in config.STYLE_NAMES:
-            style_dir = os.path.join(config.SAMPLE_DIR, style)
-            dirs_to_make.extend([
-                style_dir,
-                os.path.join(style_dir, config.OUT_STY_DIR),
-                os.path.join(style_dir, config.OUT_REC_DIR)
-            ])
+    dirs_to_make = [config.CKPT_DIR]
+    for style in config.STYLE_NAMES:
+        dirs_to_make.append(os.path.join(config.CKPT_DIR, style))
     
     for d in dirs_to_make:
         os.makedirs(d, exist_ok=True)
@@ -48,7 +33,7 @@ def train():
     logger.info(f"Using device: {device}")
 
     # Data
-    X_data, Y_data = load_data()
+    iter_a, iter_b = load_data()
 
     # Networks
     critic_a = Critic().to(device, memory_format=torch.channels_last)
@@ -98,7 +83,7 @@ def train():
 
     logger.info("Begin training!")
     for i in range(config.BEGIN_ITER, config.END_ITER + 1):
-        real_a, real_b = safe_sampling(X_data, Y_data, device)
+        real_a, real_b = safe_sampling(iter_a, iter_b, device)
         real_a = real_a.to(memory_format=torch.channels_last)
         real_b = real_b.to(memory_format=torch.channels_last)
 
@@ -116,12 +101,9 @@ def train():
 
             with autocast_ctx:
                 with torch.no_grad():
-                    # A -> B
                     fake_b = gen_a2b(real_a)
-                    # B -> A
                     fake_a = gen_b2a(real_b)
                 
-                # Apply DiffAugment to both real and fake
                 real_a_aug = DiffAugment(real_a)
                 real_b_aug = DiffAugment(real_b)
                 fake_b_aug = DiffAugment(fake_b)
@@ -132,7 +114,6 @@ def train():
                 score_fake_a = critic_a(fake_a_aug)
                 score_real_a = critic_a(real_a_aug)
 
-                # QP-div loss calculation
                 loss_val_a = score_real_a - score_fake_a
                 if config.NORM == "l1":
                     norm_a = config.LAMBDA * (real_a_aug - fake_a_aug).abs().mean()
@@ -174,10 +155,8 @@ def train():
             fake_b = gen_a2b(real_a)
             fake_a = gen_b2a(real_b)
             
-            # Use augmented fakes for adversarial loss
             fake_b_aug = DiffAugment(fake_b)
             fake_a_aug = DiffAugment(fake_a)
-            # Use augmented reals for adversarial consistency
             real_a_aug = DiffAugment(real_a)
             real_b_aug = DiffAugment(real_b)
 
@@ -189,17 +168,14 @@ def train():
             rec_a = gen_b2a(fake_b)
             rec_b = gen_a2b(fake_a)
 
-            # Adversarial losses
             loss_adv_a = (score_real_a - score_fake_a).mean()
             loss_adv_b = (score_real_b - score_fake_b).mean()
 
-            # Cycle-consistency & Identity
             loss_cycle_a = l1_loss(rec_a, real_a)
             loss_cycle_b = l1_loss(rec_b, real_b)
             loss_id_a = l1_loss(fake_b, real_b)
             loss_id_b = l1_loss(fake_a, real_a)
 
-            # Dynamic Loss Balancing
             current_cyc_weight = config.CYC_WEIGHT
             if (loss_cycle_a + loss_cycle_b) > 0.5:
                 current_cyc_weight *= 1.1
@@ -231,62 +207,6 @@ def train():
                 torch.save(net.state_dict(), path)
             logger.info(f"Saved checkpoints at iteration {i}")
 
-def infer():
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-    gen_a2b = Generator(upsample=config.UPSAMPLE).to(device)
-    gen_b2a = Generator(upsample=config.UPSAMPLE).to(device)
-
-    try:
-        a2b_path = os.path.join(config.CKPT_DIR, config.INFER_STYLE, f"gen_a2b_{config.INFER_ITER}.pth")
-        b2a_path = os.path.join(config.CKPT_DIR, config.INFER_STYLE, f"gen_b2a_{config.INFER_ITER}.pth")
-        gen_a2b.load_state_dict(torch.load(a2b_path, map_location=device, weights_only=True))
-        gen_b2a.load_state_dict(torch.load(b2a_path, map_location=device, weights_only=True))
-        logger.info(f"Loaded checkpoints from iteration {config.INFER_ITER}")
-    except Exception as e:
-        logger.error(f"Failed to load checkpoints for inference: {e}")
-        return
-
-    gen_a2b.eval()
-    gen_b2a.eval()
-
-    # Transformations
-    transform_list = []
-    if config.IMG_SIZE:
-        transform_list.extend([transforms.Resize(config.IMG_SIZE), transforms.CenterCrop(config.IMG_SIZE)])
-    transform_list.extend([transforms.ToTensor(), transforms.Normalize(mean=[0.5]*3, std=[0.5]*3)])
-    loader = transforms.Compose(transform_list)
-
-    img_path = os.path.join(config.IN_IMG_DIR, config.IMG_NAME)
-    try:
-        img = Image.open(img_path).convert('RGB')
-        img_tensor = loader(img).unsqueeze(0).to(device)
-    except Exception as e:
-        logger.error(f"Failed to load image: {e}")
-        return
-
-    with torch.no_grad():
-        # Photo -> Style typically
-        sty_img = gen_a2b(img_tensor)
-        rec_img = gen_b2a(sty_img)
-
-    # Naming and paths
-    base_name = os.path.splitext(config.IMG_NAME)[0]
-    ext = os.path.splitext(config.IMG_NAME)[1]
-    iter_k = config.INFER_ITER // 1000
-    
-    sty_name = f"sty_{base_name}_{config.INFER_STYLE}_{iter_k}k{ext}"
-    rec_name = f"rec_{base_name}_{config.INFER_STYLE}_{iter_k}k{ext}"
-    
-    sty_path = os.path.join(config.SAMPLE_DIR, config.INFER_STYLE, config.OUT_STY_DIR, sty_name)
-    rec_path = os.path.join(config.SAMPLE_DIR, config.INFER_STYLE, config.OUT_REC_DIR, rec_name)
-    
-    vutils.save_image(sty_img, sty_path, normalize=True)
-    vutils.save_image(rec_img, rec_path, normalize=True)
-    logger.info(f"Saved: {sty_path}\nSaved: {rec_path}")
-
 if __name__ == "__main__":
     setup_directories()
-    if config.TRAIN:
-        train()
-    else:
-        infer()
+    train()

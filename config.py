@@ -35,7 +35,6 @@ class Config:
     BETA2: float = 0.999
     BEGIN_ITER: int = 0
     END_ITER: int = 15000
-    TRAIN: bool = False
 
     # Optimization
     USE_AMP: bool = True

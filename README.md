@@ -58,9 +58,15 @@ pip install -r requirements.txt
    ```
 
 3. **Run:**
-   Adjust settings in `config.py` (e.g., set `TRAIN = True`), then:
+   
+   To train the network:
    ```bash
-   python main.py
+   python train.py
+   ```
+
+   To perform inference (stylization):
+   ```bash
+   python infer.py
    ```
 
 ### Configurations (`config.py`)
