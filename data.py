@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from config import config
-import itertools
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 import torchvision.datasets as dsets
@@ -44,13 +43,13 @@ def load_data():
     print(f"Domain B batches: {len(loader_b)}")
     print("")
 
-    # Return infinite iterators
-    return itertools.cycle(loader_a), itertools.cycle(loader_b)
+    # Return loaders (Accelerate will prepare them)
+    return loader_a, loader_b
 
-def safe_sampling(iter_a, iter_b, device):
+def safe_sampling(iter_a, iter_b):
     # Sample the data
+    # Note: Accelerator handles device placement
     real_a, _ = next(iter_a)
     real_b, _ = next(iter_b)
     
-    # Return correct data with channels_last if possible (handled in main usually, but can be done here)
-    return real_a.to(device, non_blocking=True), real_b.to(device, non_blocking=True)
+    return real_a, real_b

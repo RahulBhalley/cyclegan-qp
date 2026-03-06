@@ -37,9 +37,10 @@ class Config:
     END_ITER: int = 15000
 
     # Optimization
-    USE_AMP: bool = True
     USE_COMPILE: bool = True
     MATMUL_PRECISION: str = "high" # 'highest', 'high', 'medium'
+    MIXED_PRECISION: str = "fp16" # "no", "fp16", "bf16"
+
 
     # Inference
     INFER_ITER: int = 15000

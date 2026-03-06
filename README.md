@@ -22,10 +22,11 @@ If you find our work or this repository helpful, please consider citing:
 
 The codebase has been upgraded with the following state-of-the-art GAN training techniques:
 
+*   **🤗 Accelerate Integration:** Seamlessly scale training across CPU, GPU (single/multi), and TPU with built-in support for mixed precision (FP16/BF16).
 *   **Differentiable Augmentation (DiffAugment):** Dramatically improves data efficiency and prevents discriminator overfitting on small artist datasets.
 *   **Self-Attention (SAGAN):** Integrated into both Generator and Critic to capture long-range spatial dependencies for more coherent global structures.
 *   **PyTorch 2.5+ Optimizations:**
-    *   **AMP (Automatic Mixed Precision):** Faster training with lower memory footprint.
+    *   **AMP (via Accelerate):** Automatic Mixed Precision for faster training.
     *   **`torch.compile`:** JIT compilation for optimized execution kernels.
     *   **Channels Last:** Optimized memory format for NVIDIA Tensor Cores.
 *   **Architectural Upgrades:**
@@ -38,6 +39,7 @@ The codebase has been upgraded with the following state-of-the-art GAN training 
 - Python (version >= 3.10)
 - [PyTorch](https://github.com/pytorch/pytorch) (version >= 2.4.0)
 - [Torchvision](https://github.com/pytorch/vision) (version >= 0.19.0)
+- [Accelerate](https://github.com/huggingface/accelerate) (version >= 0.30.0)
 
 Install dependencies via:
 ```bash
@@ -57,11 +59,16 @@ pip install -r requirements.txt
    bash download_dataset.sh ukiyoe2photo
    ```
 
-3. **Run:**
+3. **Configure Accelerate (First time only):**
+   ```bash
+   accelerate config
+   ```
+
+4. **Run:**
    
    To train the network:
    ```bash
-   python train.py
+   accelerate launch train.py
    ```
 
    To perform inference (stylization):
@@ -75,7 +82,7 @@ The project uses a structured `Config` dataclass for all hyperparameters.
 
 | Category | Variable | Description |
 | :--- | :--- | :--- |
-| **Optimization** | `USE_AMP` | Enable Mixed Precision (FP16/BF16) |
+| **Optimization** | `MIXED_PRECISION` | Mixed precision mode ("no", "fp16", "bf16") |
 | | `USE_COMPILE` | Enable `torch.compile` for speed |
 | | `MATMUL_PRECISION` | Set to 'high' or 'medium' for Tensor Core boost |
 | **GAN Tricks** | `USE_INSTANCE_NORM` | Use InstanceNorm instead of BatchNorm |

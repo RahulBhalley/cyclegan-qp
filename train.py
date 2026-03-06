@@ -5,7 +5,8 @@ import torch.nn as nn
 import torch.optim as optim
 import os
 import logging
-from contextlib import nullcontext
+import itertools
+from accelerate import Accelerator
 
 from networks import Generator, Critic
 from config import config
@@ -16,41 +17,50 @@ from diff_augment import DiffAugment
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def setup_directories():
+def setup_directories(accelerator):
     """Ensure all necessary directories exist."""
-    dirs_to_make = [config.CKPT_DIR]
-    for style in config.STYLE_NAMES:
-        dirs_to_make.append(os.path.join(config.CKPT_DIR, style))
-    
-    for d in dirs_to_make:
-        os.makedirs(d, exist_ok=True)
+    if accelerator.is_main_process:
+        dirs_to_make = [config.CKPT_DIR]
+        for style in config.STYLE_NAMES:
+            dirs_to_make.append(os.path.join(config.CKPT_DIR, style))
+        
+        for d in dirs_to_make:
+            os.makedirs(d, exist_ok=True)
 
 def train():
+    # Initialize Accelerator
+    accelerator = Accelerator(mixed_precision=config.MIXED_PRECISION)
+    device = accelerator.device
+    
     # Setup
     torch.manual_seed(config.RANDOM_SEED)
     torch.set_float32_matmul_precision(config.MATMUL_PRECISION)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-    logger.info(f"Using device: {device}")
+    
+    if accelerator.is_main_process:
+        logger.info(f"Using device: {device}")
+        logger.info(f"Mixed precision: {config.MIXED_PRECISION}")
 
     # Data
-    iter_a, iter_b = load_data()
+    loader_a, loader_b = load_data()
 
     # Networks
-    critic_a = Critic().to(device, memory_format=torch.channels_last)
-    critic_b = Critic().to(device, memory_format=torch.channels_last)
-    gen_a2b = Generator(upsample=config.UPSAMPLE).to(device, memory_format=torch.channels_last)
-    gen_b2a = Generator(upsample=config.UPSAMPLE).to(device, memory_format=torch.channels_last)
+    critic_a = Critic().to(memory_format=torch.channels_last)
+    critic_b = Critic().to(memory_format=torch.channels_last)
+    gen_a2b = Generator(upsample=config.UPSAMPLE).to(memory_format=torch.channels_last)
+    gen_b2a = Generator(upsample=config.UPSAMPLE).to(memory_format=torch.channels_last)
 
     # Compile models if requested
     if config.USE_COMPILE and hasattr(torch, "compile"):
         try:
-            logger.info("Compiling models...")
+            if accelerator.is_main_process:
+                logger.info("Compiling models...")
             critic_a = torch.compile(critic_a)
             critic_b = torch.compile(critic_b)
             gen_a2b = torch.compile(gen_a2b)
             gen_b2a = torch.compile(gen_b2a)
         except Exception as e:
-            logger.warning(f"Compilation failed: {e}. Proceeding without compilation.")
+            if accelerator.is_main_process:
+                logger.warning(f"Compilation failed: {e}. Proceeding without compilation.")
 
     # Optimizers
     critic_a_optim = optim.Adam(critic_a.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
@@ -58,38 +68,53 @@ def train():
     gen_a2b_optim = optim.Adam(gen_a2b.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
     gen_b2a_optim = optim.Adam(gen_b2a.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
 
-    # Mixed Precision Setup
-    scaler_c = torch.amp.GradScaler('cuda') if config.USE_AMP and device.type == 'cuda' else None
-    scaler_g = torch.amp.GradScaler('cuda') if config.USE_AMP and device.type == 'cuda' else None
-    autocast_ctx = torch.amp.autocast('cuda') if config.USE_AMP and device.type == 'cuda' else nullcontext()
+    # Prepare everything with Accelerator
+    (critic_a, critic_b, gen_a2b, gen_b2a, 
+     critic_a_optim, critic_b_optim, gen_a2b_optim, gen_b2a_optim, 
+     loader_a, loader_b) = accelerator.prepare(
+        critic_a, critic_b, gen_a2b, gen_b2a, 
+        critic_a_optim, critic_b_optim, gen_a2b_optim, gen_b2a_optim, 
+        loader_a, loader_b
+    )
+
+    # Infinite Iterators after preparation
+    iter_a = itertools.cycle(loader_a)
+    iter_b = itertools.cycle(loader_b)
 
     # Load checkpoints
     if config.BEGIN_ITER > 0:
         try:
+            # We unwrap the model to load the weights
             networks_to_load = {
-                gen_a2b: "gen_a2b",
-                gen_b2a: "gen_b2a",
-                critic_a: "critic_a",
-                critic_b: "critic_b"
+                accelerator.unwrap_model(gen_a2b): "gen_a2b",
+                accelerator.unwrap_model(gen_b2a): "gen_b2a",
+                accelerator.unwrap_model(critic_a): "critic_a",
+                accelerator.unwrap_model(critic_b): "critic_b"
             }
             for net, name in networks_to_load.items():
                 path = os.path.join(config.CKPT_DIR, config.TRAIN_STYLE, f"{name}_{config.BEGIN_ITER}.pth")
                 net.load_state_dict(torch.load(path, map_location=device, weights_only=True))
-            logger.info(f"Loaded checkpoints from iteration {config.BEGIN_ITER}")
+            if accelerator.is_main_process:
+                logger.info(f"Loaded checkpoints from iteration {config.BEGIN_ITER}")
         except Exception as e:
-            logger.error(f"Failed to load checkpoints: {e}")
+            if accelerator.is_main_process:
+                logger.error(f"Failed to load checkpoints: {e}")
 
     l1_loss = nn.L1Loss()
 
-    logger.info("Begin training!")
+    if accelerator.is_main_process:
+        logger.info("Begin training!")
+        
     for i in range(config.BEGIN_ITER, config.END_ITER + 1):
-        real_a, real_b = safe_sampling(iter_a, iter_b, device)
+        real_a, real_b = safe_sampling(iter_a, iter_b)
         real_a = real_a.to(memory_format=torch.channels_last)
         real_b = real_b.to(memory_format=torch.channels_last)
 
         #################
         # Train Critics #
         #################
+        # Requires grad logic - should be done on unwrapped models if compile is used? 
+        # Actually it's fine on wrapped models too.
         for param in gen_a2b.parameters(): param.requires_grad = False
         for param in gen_b2a.parameters(): param.requires_grad = False
         for param in critic_a.parameters(): param.requires_grad = True
@@ -99,7 +124,7 @@ def train():
             critic_a_optim.zero_grad(set_to_none=True)
             critic_b_optim.zero_grad(set_to_none=True)
 
-            with autocast_ctx:
+            with accelerator.autocast():
                 with torch.no_grad():
                     fake_b = gen_a2b(real_a)
                     fake_a = gen_b2a(real_b)
@@ -130,15 +155,9 @@ def train():
 
                 loss_critic_total = loss_critic_a + loss_critic_b
 
-            if scaler_c:
-                scaler_c.scale(loss_critic_total).backward()
-                scaler_c.step(critic_a_optim)
-                scaler_c.step(critic_b_optim)
-                scaler_c.update()
-            else:
-                loss_critic_total.backward()
-                critic_a_optim.step()
-                critic_b_optim.step()
+            accelerator.backward(loss_critic_total)
+            critic_a_optim.step()
+            critic_b_optim.step()
 
         ####################
         # Train Generators #
@@ -151,7 +170,7 @@ def train():
         gen_a2b_optim.zero_grad(set_to_none=True)
         gen_b2a_optim.zero_grad(set_to_none=True)
 
-        with autocast_ctx:
+        with accelerator.autocast():
             fake_b = gen_a2b(real_a)
             fake_a = gen_b2a(real_b)
             
@@ -182,31 +201,28 @@ def train():
 
             loss_gen_total = loss_adv_a + loss_adv_b + current_cyc_weight * (loss_cycle_a + loss_cycle_b) + config.ID_WEIGHT * (loss_id_a + loss_id_b)
 
-        if scaler_g:
-            scaler_g.scale(loss_gen_total).backward()
-            scaler_g.step(gen_a2b_optim)
-            scaler_g.step(gen_b2a_optim)
-            scaler_g.update()
-        else:
-            loss_gen_total.backward()
-            gen_a2b_optim.step()
-            gen_b2a_optim.step()
+        accelerator.backward(loss_gen_total)
+        gen_a2b_optim.step()
+        gen_b2a_optim.step()
 
-        if i % config.ITERS_PER_LOG == 0:
-            logger.info(f"Iter: {i} | Critic Loss: {loss_critic_total.item():.4f} | Gen Loss: {loss_gen_total.item():.4f}")
+        if accelerator.is_main_process:
+            if i % config.ITERS_PER_LOG == 0:
+                logger.info(f"Iter: {i} | Critic Loss: {loss_critic_total.item():.4f} | Gen Loss: {loss_gen_total.item():.4f}")
 
-        if i % config.ITERS_PER_CKPT == 0:
-            ckpt_map = {
-                gen_a2b: "gen_a2b",
-                gen_b2a: "gen_b2a",
-                critic_a: "critic_a",
-                critic_b: "critic_b"
-            }
-            for net, name in ckpt_map.items():
-                path = os.path.join(config.CKPT_DIR, config.TRAIN_STYLE, f"{name}_{i}.pth")
-                torch.save(net.state_dict(), path)
-            logger.info(f"Saved checkpoints at iteration {i}")
+            if i % config.ITERS_PER_CKPT == 0:
+                ckpt_map = {
+                    accelerator.unwrap_model(gen_a2b): "gen_a2b",
+                    accelerator.unwrap_model(gen_b2a): "gen_b2a",
+                    accelerator.unwrap_model(critic_a): "critic_a",
+                    accelerator.unwrap_model(critic_b): "critic_b"
+                }
+                for net, name in ckpt_map.items():
+                    path = os.path.join(config.CKPT_DIR, config.TRAIN_STYLE, f"{name}_{i}.pth")
+                    torch.save(net.state_dict(), path)
+                logger.info(f"Saved checkpoints at iteration {i}")
 
 if __name__ == "__main__":
-    setup_directories()
+    from accelerate import Accelerator
+    acc = Accelerator()
+    setup_directories(acc)
     train()
