@@ -17,20 +17,20 @@ def load_data():
     ])
 
     # Make datasets
-    X_folder = dsets.ImageFolder(config.DATASET_PATH["trainA"], transform=transform)
-    Y_folder = dsets.ImageFolder(config.DATASET_PATH["trainB"], transform=transform)
+    A_folder = dsets.ImageFolder(config.DATASET_PATH["trainA"], transform=transform)
+    B_folder = dsets.ImageFolder(config.DATASET_PATH["trainB"], transform=transform)
     
     # Make dataset loaders with drop_last=True to handle uneven batch sizes
-    X_loader = DataLoader(
-        X_folder, 
+    loader_a = DataLoader(
+        A_folder, 
         batch_size=config.BATCH_SIZE, 
         shuffle=True, 
         drop_last=True,
         num_workers=2,
         pin_memory=True
     )
-    Y_loader = DataLoader(
-        Y_folder, 
+    loader_b = DataLoader(
+        B_folder, 
         batch_size=config.BATCH_SIZE, 
         shuffle=True, 
         drop_last=True,
@@ -40,17 +40,17 @@ def load_data():
     
     # Print length of sample batches
     print("Dataset Details")
-    print(f"X_set batches: {len(X_loader)}")
-    print(f"Y_set batches: {len(Y_loader)}")
+    print(f"Domain A batches: {len(loader_a)}")
+    print(f"Domain B batches: {len(loader_b)}")
     print("")
 
     # Return infinite iterators
-    return itertools.cycle(X_loader), itertools.cycle(Y_loader)
+    return itertools.cycle(loader_a), itertools.cycle(loader_b)
 
-def safe_sampling(X_iter, Y_iter, device):
+def safe_sampling(iter_a, iter_b, device):
     # Sample the data
-    x_sample, _ = next(X_iter)
-    y_sample, _ = next(Y_iter)
+    real_a, _ = next(iter_a)
+    real_b, _ = next(iter_b)
     
     # Return correct data with channels_last if possible (handled in main usually, but can be done here)
-    return x_sample.to(device, non_blocking=True), y_sample.to(device, non_blocking=True)
+    return real_a.to(device, non_blocking=True), real_b.to(device, non_blocking=True)

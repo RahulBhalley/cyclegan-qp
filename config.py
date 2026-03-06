@@ -8,7 +8,7 @@ class Config:
     # Data
     DATASET_DIR: str = "datasets"
     DATASET_NAME: str = "vangogh2photo"
-    STYLES: List[str] = ("ce", "mo", "uk", "vg")
+    STYLE_NAMES: List[str] = ("ce", "mo", "uk", "vg")
     LOAD_DIM: int = 286
     CROP_DIM: int = 256
     CKPT_DIR: str = "checkpoints"
