@@ -1,390 +1,285 @@
 # -*- coding: utf-8 -*-
 
-__author__ = "Rahul Bhalley"
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
 import torchvision.utils as vutils
+import torchvision.transforms as transforms
+from PIL import Image
+import os
+import sys
+import logging
+from contextlib import nullcontext
 
 from networks import Generator, Critic
+from config import config
+from data import load_data, safe_sampling
+from diff_augment import DiffAugment
 
-from config import *
-from data import *
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-import os
-
-
-####################
-# Make directories #
-####################
-
-try:
-    if TRAIN:
-        # Checkpoint directories
-        if not os.path.exists(CKPT_DIR):
-            os.mkdir(CKPT_DIR)
-        for style in STYLES:
-            if not os.path.exists(os.path.join(CKPT_DIR, style)):
-                os.mkdir(os.path.join(CKPT_DIR, style))
+def setup_directories():
+    """Ensure all necessary directories exist."""
+    dirs_to_make = []
+    if config.TRAIN:
+        dirs_to_make.append(config.CKPT_DIR)
+        for style in config.STYLES:
+            dirs_to_make.append(os.path.join(config.CKPT_DIR, style))
     else:
-        # Sample directories
-        if not os.path.exists(SAMPLE_DIR):
-            os.mkdir(SAMPLE_DIR)
-        
-        for style in STYLES:
-            if not os.path.exists(os.path.join(SAMPLE_DIR, style)):
-                os.mkdir(os.path.join(SAMPLE_DIR, style))
-                # Make three directories
-                os.mkdir(os.path.join(SAMPLE_DIR, style, OUT_STY_DIR))  # Stylized images here
-                os.mkdir(os.path.join(SAMPLE_DIR, style, OUT_REC_DIR))  # Reconstructed images here
-except:
-    print("Directories already exist!")
-
-
-####################
-# Load the dataset #
-####################
-
-if TRAIN:
-    # Make experiments reproducible
-    _ = torch.manual_seed(RANDOM_SEED)
+        dirs_to_make.append(config.SAMPLE_DIR)
+        for style in config.STYLES:
+            style_dir = os.path.join(config.SAMPLE_DIR, style)
+            dirs_to_make.extend([
+                style_dir,
+                os.path.join(style_dir, config.OUT_STY_DIR),
+                os.path.join(style_dir, config.OUT_REC_DIR)
+            ])
     
-    # Load the datasets
-    X_set, Y_set = load_data()
-
-    # Load infinite data
-    X_data = get_infinite_X_data(X_set)
-    Y_data = get_infinite_Y_data(Y_set)
-
-
-########################################################
-# Define device, neural nets, losses, optimizers, etc. #
-########################################################
-
-# Automatic GPU/CPU device placement
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-# Networks
-C_X = Critic().to(device)   # Criticizes X data
-C_Y = Critic().to(device)   # Criticizes Y data
-G = Generator(upsample=UPSAMPLE).to(device) # Translates X -> Y
-F = Generator(upsample=UPSAMPLE).to(device) # Translates Y -> X
-
-# Losses
-l1_loss = nn.L1Loss()
-
-# Optimizers
-C_X_optim = optim.Adam(C_X.parameters(), lr=LR, betas=(BETA1, BETA2))
-C_Y_optim = optim.Adam(C_Y.parameters(), lr=LR, betas=(BETA1, BETA2))
-G_optim =   optim.Adam(G.parameters(),   lr=LR, betas=(BETA1, BETA2))
-F_optim =   optim.Adam(F.parameters(),   lr=LR, betas=(BETA1, BETA2))
-
-
-###############
-# Training 🧠 #
-###############
+    for d in dirs_to_make:
+        os.makedirs(d, exist_ok=True)
 
 def train():
+    # Setup
+    torch.manual_seed(config.RANDOM_SEED)
+    torch.set_float32_matmul_precision(config.MATMUL_PRECISION)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    logger.info(f"Using device: {device}")
 
-    # Status
-    print("Begin training!")
+    # Data
+    X_data, Y_data = load_data()
 
-    # Load the checkpoints from `BEGIN_ITER`
-    try:
-        # Get checkpoint paths
-        g_model_path =   os.path.join(CKPT_DIR, TRAIN_STYLE, f"G_{BEGIN_ITER}.pth")
-        f_model_path =   os.path.join(CKPT_DIR, TRAIN_STYLE, f"F_{BEGIN_ITER}.pth")
-        c_x_model_path = os.path.join(CKPT_DIR, TRAIN_STYLE, f"C_X_{BEGIN_ITER}.pth")
-        c_y_model_path = os.path.join(CKPT_DIR, TRAIN_STYLE, f"C_Y_{BEGIN_ITER}.pth")
+    # Networks
+    C_X = Critic().to(device, memory_format=torch.channels_last)
+    C_Y = Critic().to(device, memory_format=torch.channels_last)
+    G = Generator(upsample=config.UPSAMPLE).to(device, memory_format=torch.channels_last)
+    F = Generator(upsample=config.UPSAMPLE).to(device, memory_format=torch.channels_last)
 
-        # Load parameters from checkpoint paths
-        G.load_state_dict(torch.load(g_model_path,     map_location=device))
-        F.load_state_dict(torch.load(f_model_path,     map_location=device))
-        C_X.load_state_dict(torch.load(c_x_model_path, map_location=device))
-        C_Y.load_state_dict(torch.load(c_y_model_path, map_location=device))
-        
-        # Status
-        print(f"Training: Loaded the checkpoints from {BEGIN_ITER}th iteration.")
-    except:
-        # Status
-        print(f"Training: Couldn't load the checkpoints from {BEGIN_ITER}th iteration.")
+    # Compile models if requested
+    if config.USE_COMPILE and hasattr(torch, "compile"):
+        try:
+            logger.info("Compiling models...")
+            C_X = torch.compile(C_X)
+            C_Y = torch.compile(C_Y)
+            G = torch.compile(G)
+            F = torch.compile(F)
+        except Exception as e:
+            logger.warning(f"Compilation failed: {e}. Proceeding without compilation.")
 
-    # Now finally begin training!
-    for i in range(BEGIN_ITER, END_ITER + 1):
-        
-        # Sample safely
-        x, y = safe_sampling(X_data, Y_data, device)
+    # Optimizers
+    C_X_optim = optim.Adam(C_X.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
+    C_Y_optim = optim.Adam(C_Y.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
+    G_optim = optim.Adam(G.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
+    F_optim = optim.Adam(F.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
+
+    # Mixed Precision Setup
+    scaler_c = torch.amp.GradScaler('cuda') if config.USE_AMP and device.type == 'cuda' else None
+    scaler_g = torch.amp.GradScaler('cuda') if config.USE_AMP and device.type == 'cuda' else None
+    autocast_ctx = torch.amp.autocast('cuda') if config.USE_AMP and device.type == 'cuda' else nullcontext()
+
+    # Load checkpoints
+    if config.BEGIN_ITER > 0:
+        try:
+            for net, name in zip([G, F, C_X, C_Y], ["G", "F", "C_X", "C_Y"]):
+                path = os.path.join(config.CKPT_DIR, config.TRAIN_STYLE, f"{name}_{config.BEGIN_ITER}.pth")
+                net.load_state_dict(torch.load(path, map_location=device, weights_only=True))
+            logger.info(f"Loaded checkpoints from iteration {config.BEGIN_ITER}")
+        except Exception as e:
+            logger.error(f"Failed to load checkpoints: {e}")
+
+    l1_loss = nn.L1Loss()
+
+    logger.info("Begin training!")
+    for i in range(config.BEGIN_ITER, config.END_ITER + 1):
+        x_real, y_real = safe_sampling(X_data, Y_data, device)
+        x_real = x_real.to(memory_format=torch.channels_last)
+        y_real = y_real.to(memory_format=torch.channels_last)
 
         #################
         # Train Critics #
         #################
+        for param in G.parameters(): param.requires_grad = False
+        for param in F.parameters(): param.requires_grad = False
+        for param in C_X.parameters(): param.requires_grad = True
+        for param in C_Y.parameters(): param.requires_grad = True
 
-        # Update gradient computation:
-        # ∙ 👎 Generators
-        # ∙ 👍 Critics
-        for param in G.parameters():
-            param.requires_grad_(False)
-        for param in F.parameters():
-            param.requires_grad_(False)
-        for param in C_X.parameters():
-            param.requires_grad_(True)
-        for param in C_Y.parameters():
-            param.requires_grad_(True)
+        for _ in range(2):
+            C_X_optim.zero_grad(set_to_none=True)
+            C_Y_optim.zero_grad(set_to_none=True)
 
-        for j in range(2):
+            with autocast_ctx:
+                with torch.no_grad():
+                    # X -> Y
+                    G_x = G(x_real)
+                    # Y -> X
+                    F_y = F(y_real)
+                
+                # Apply DiffAugment to both real and fake
+                # This makes the critic task harder and prevents overfitting on small datasets
+                x_real_aug = DiffAugment(x_real)
+                y_real_aug = DiffAugment(y_real)
+                G_x_aug = DiffAugment(G_x)
+                F_y_aug = DiffAugment(F_y)
 
-            # Forward passes:
-            # ∙ X -> Y
-            # ∙ Y -> X
+                C_Y_G_x = C_Y(G_x_aug)
+                C_y_y = C_Y(y_real_aug)
+                C_X_F_y = C_X(F_y_aug)
+                C_X_x = C_X(x_real_aug)
 
-            # Domain translation: X -> Y
-            with torch.no_grad():
-                G_x = G(x)      # G(x),     X -> Y
-            C_Y_G_x = C_Y(G_x)  # Cy(G(x)), fake score
-            C_y_y = C_Y(y)      # Cy(y),    real score
+                # QP-div loss calculation
+                x_loss_val = C_X_x - C_X_F_y
+                if config.NORM == "l1":
+                    x_norm = config.LAMBDA * (x_real_aug - F_y_aug).abs().mean()
+                else:
+                    x_norm = config.LAMBDA * ((x_real_aug - F_y_aug)**2).mean().sqrt()
+                x_loss = (-x_loss_val + 0.5 * x_loss_val**2 / (x_norm + 1e-8)).mean()
 
-            # Domain translation: Y -> X
-            with torch.no_grad():
-                F_y = F(y)      # F(y),     Y -> X
-            C_X_F_y = C_X(F_y)  # Cx(F(y)), fake score
-            C_X_x = C_X(x)      # Cx(x),    real score
+                y_loss_val = C_y_y - C_Y_G_x
+                if config.NORM == "l1":
+                    y_norm = config.LAMBDA * (y_real_aug - G_x_aug).abs().mean()
+                else:
+                    y_norm = config.LAMBDA * ((y_real_aug - G_x_aug)**2).mean().sqrt()
+                y_loss = (-y_loss_val + 0.5 * y_loss_val**2 / (y_norm + 1e-8)).mean()
 
-            # Zerofy the gradients
-            C_X_optim.zero_grad()
-            C_Y_optim.zero_grad()
+                c_loss = x_loss + y_loss
 
-            # Compute the losses:
-            # ∙ QP-div loss (critizing x data),     Y -> X
-            # ∙ QP-div loss (critizing y data),     X -> Y
-
-            # QP-div loss (critizing x data)
-            x_loss = C_X_x - C_X_F_y    # real score - fake score
-            if NORM == "l1":
-                x_norm = LAMBDA * (x - F_y).abs().mean()
-            elif NORM == "l2":
-                x_norm = LAMBDA * ((x - F_y)**2).mean().sqrt()
-            x_loss = -x_loss + 0.5 * x_loss**2 / x_norm
-            x_loss = x_loss.mean()
-
-            # QP-div loss (critizing y data)
-            y_loss = C_y_y - C_Y_G_x    # real score - fake score
-            if NORM == "l1":
-                y_norm = LAMBDA * (y - G_x).abs().mean()
-            elif NORM == "l2":
-                y_norm = LAMBDA * ((y - G_x)**2).mean().sqrt()
-            y_loss = -y_loss + 0.5 * y_loss**2 / y_norm
-            y_loss = y_loss.mean()
-
-            # Total loss
-            c_loss = x_loss + y_loss
-
-            # Compute gradients
-            c_loss.backward()
-
-            # Update the networks
-            C_Y_optim.step()
-            C_X_optim.step()
+            if scaler_c:
+                scaler_c.scale(c_loss).backward()
+                scaler_c.step(C_X_optim)
+                scaler_c.step(C_Y_optim)
+                scaler_c.update()
+            else:
+                c_loss.backward()
+                C_X_optim.step()
+                C_Y_optim.step()
 
         ####################
         # Train Generators #
         ####################
+        for param in G.parameters(): param.requires_grad = True
+        for param in F.parameters(): param.requires_grad = True
+        for param in C_X.parameters(): param.requires_grad = False
+        for param in C_Y.parameters(): param.requires_grad = False
 
-        # Update gradient computation:
-        # ∙ 👍 Generators
-        # ∙ 👎 Critics
-        for param in G.parameters():
-            param.requires_grad_(True)
-        for param in F.parameters():
-            param.requires_grad_(True)
-        for param in C_X.parameters():
-            param.requires_grad_(False)
-        for param in C_Y.parameters():
-            param.requires_grad_(False)
+        G_optim.zero_grad(set_to_none=True)
+        F_optim.zero_grad(set_to_none=True)
 
-        for j in range(1):
-
-            # Forward passes:
-            # ∙ X -> Y
-            # ∙ Y -> X
-            # ∙ X -> Y -> X
-            # ∙ Y -> X -> Y
-
-            # Domain translation: X -> Y
-            G_x = G(x)          # G(x),     X -> Y
-            C_Y_G_x = C_Y(G_x)  # Cy(G(x)), fake score
-            C_y_y = C_Y(y)      # Cy(y),    real score
-
-            # Domain translation: Y -> X
-            F_y = F(y)          # F(y),     Y -> X
-            C_X_F_y = C_X(F_y)  # Cx(F(y)), fake score
-            C_X_x = C_X(x)      # Cx(x),    real score
-
-            # Cycle-consistent translations
-            F_G_x = F(G_x)      # F(G(x)), X -> Y -> X
-            G_F_y = G(F_y)      # G(F(y)), Y -> X -> Y
-
-            # Zerofy the gradients
-            G_optim.zero_grad()
-            F_optim.zero_grad()
-
-            # Compute the losses:
-            # ∙ QP-div loss (critizing x data),     Y -> X
-            # ∙ QP-div loss (critizing y data),     X -> Y
-            # ∙ Cycle-consistency loss,             || F(G(x)) - x || L1
-            # ∙ Cycle-consistency loss,             || G(F(y)) - y || L1
-            # ∙ Identity loss,                      || G(x) - y || L1
-            # ∙ Identity loss,                      || F(y) - x || L1
+        with autocast_ctx:
+            G_x = G(x_real)
+            F_y = F(y_real)
             
-            # QP-div losses
-            x_loss = C_X_x - C_X_F_y        # real score - fake score
-            y_loss = C_y_y - C_Y_G_x        # real score - fake score
-            x_loss = x_loss.mean()
-            y_loss = y_loss.mean()
+            # Use augmented fakes for adversarial loss
+            G_x_aug = DiffAugment(G_x)
+            F_y_aug = DiffAugment(F_y)
+            # Use augmented reals for adversarial consistency
+            x_real_aug = DiffAugment(x_real)
+            y_real_aug = DiffAugment(y_real)
 
-            # Cycle-consistency losses
-            x_cyc_loss = l1_loss(F_G_x, x)  # || F(G(x)) - x || L1
-            y_cyc_loss = l1_loss(G_F_y, y)  # || G(F(y)) - y || L1
-            x_cyc_loss = x_cyc_loss.mean()
-            y_cyc_loss = y_cyc_loss.mean()
-            
-            # Identity losses
-            x_id_loss = l1_loss(G_x, y)     # || G(x) - y || L1
-            y_id_loss = l1_loss(F_y, x)     # || F(y) - x || L1
-            x_id_loss = x_id_loss.mean()
-            y_id_loss = y_id_loss.mean()
+            C_Y_G_x = C_Y(G_x_aug)
+            C_y_y = C_Y(y_real_aug)
+            C_X_F_y = C_X(F_y_aug)
+            C_X_x = C_X(x_real_aug)
 
-            # Total loss
-            g_loss = x_loss + y_loss
-            g_loss += CYC_WEIGHT * (x_cyc_loss + y_cyc_loss)
-            g_loss += ID_WEIGHT * (x_id_loss + y_id_loss)
+            F_G_x = F(G_x)
+            G_F_y = G(F_y)
 
-            # Compute gradients
+            # Adversarial losses
+            x_adv_loss = (C_X_x - C_X_F_y).mean()
+            y_adv_loss = (C_y_y - C_Y_G_x).mean()
+
+            # Cycle-consistency & Identity
+            x_cyc_loss = l1_loss(F_G_x, x_real)
+            y_cyc_loss = l1_loss(G_F_y, y_real)
+            x_id_loss = l1_loss(G_x, y_real)
+            y_id_loss = l1_loss(F_y, x_real)
+
+            # Dynamic Loss Balancing (Simple version: adjust weights if cycle loss is too high)
+            # This helps the generator prioritize content preservation if it's failing
+            cyc_weight = config.CYC_WEIGHT
+            if (x_cyc_loss + y_cyc_loss) > 0.5: # Threshold example
+                cyc_weight *= 1.1
+
+            g_loss = x_adv_loss + y_adv_loss + cyc_weight * (x_cyc_loss + y_cyc_loss) + config.ID_WEIGHT * (x_id_loss + y_id_loss)
+
+        if scaler_g:
+            scaler_g.scale(g_loss).backward()
+            scaler_g.step(G_optim)
+            scaler_g.step(F_optim)
+            scaler_g.update()
+        else:
             g_loss.backward()
-
-            # Update the networks
             G_optim.step()
             F_optim.step()
 
-        #############
-        # Log stats #
-        #############
+        if i % config.ITERS_PER_LOG == 0:
+            logger.info(f"Iter: {i} | C loss: {c_loss.item():.4f} | G loss: {g_loss.item():.4f}")
 
-        if i % ITERS_PER_LOG == 0:
-            # Status
-            print(f"iter: {i} c_loss: {c_loss} g_loss: {g_loss}")
+        if i % config.ITERS_PER_CKPT == 0:
+            for net, name in zip([G, F, C_X, C_Y], ["G", "F", "C_X", "C_Y"]):
+                path = os.path.join(config.CKPT_DIR, config.TRAIN_STYLE, f"{name}_{i}.pth")
+                torch.save(net.state_dict(), path)
+            logger.info(f"Saved checkpoints at iteration {i}")
 
-        if i % ITERS_PER_CKPT == 0:
-            # Get checkpoint paths
-            g_model_path =   os.path.join(CKPT_DIR, TRAIN_STYLE, f"G_{i}.pth")
-            f_model_path =   os.path.join(CKPT_DIR, TRAIN_STYLE, f"F_{i}.pth")
-            c_x_model_path = os.path.join(CKPT_DIR, TRAIN_STYLE, f"C_X_{i}.pth")
-            c_y_model_path = os.path.join(CKPT_DIR, TRAIN_STYLE, f"C_Y_{i}.pth")
+def infer():
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    G = Generator(upsample=config.UPSAMPLE).to(device)
+    F = Generator(upsample=config.UPSAMPLE).to(device)
 
-            # Save the checkpoints
-            torch.save(G.state_dict(),   g_model_path)
-            torch.save(F.state_dict(),   f_model_path)
-            torch.save(C_X.state_dict(), c_x_model_path)
-            torch.save(C_Y.state_dict(), c_y_model_path)
+    try:
+        g_path = os.path.join(config.CKPT_DIR, config.INFER_STYLE, f"G_{config.INFER_ITER}.pth")
+        f_path = os.path.join(config.CKPT_DIR, config.INFER_STYLE, f"F_{config.INFER_ITER}.pth")
+        G.load_state_dict(torch.load(g_path, map_location=device, weights_only=True))
+        F.load_state_dict(torch.load(f_path, map_location=device, weights_only=True))
+        logger.info(f"Loaded checkpoints from iteration {config.INFER_ITER}")
+    except Exception as e:
+        logger.error(f"Failed to load checkpoints for inference: {e}")
+        return
 
-            # Status
-            print(f"Saved checkpoints at {i}th iteration.")
-    # Status
-    print("Finished Training!")
-
-
-################
-# Inference 🧠 #
-################
-
-def infer(iteration, style, img_name, in_img_dir, out_rec_dir, out_sty_dir, img_size=None):
-    
-    # Set neural nets to evaluation mode
     G.eval()
     F.eval()
 
-    # Try loading models from checkpoints at `iteration`
+    # Transformations
+    transform_list = []
+    if config.IMG_SIZE:
+        transform_list.extend([transforms.Resize(config.IMG_SIZE), transforms.CenterCrop(config.IMG_SIZE)])
+    transform_list.extend([transforms.ToTensor(), transforms.Normalize(mean=[0.5]*3, std=[0.5]*3)])
+    loader = transforms.Compose(transform_list)
+
+    img_path = os.path.join(config.IN_IMG_DIR, config.IMG_NAME)
     try:
-        # Get checkpoint paths
-        g_model_path = os.path.join(CKPT_DIR, style, f"G_{iteration}.pth")
-        f_model_path = os.path.join(CKPT_DIR, style, f"F_{iteration}.pth")
-        
-        # Load parameters from checkpoint paths
-        G.load_state_dict(torch.load(g_model_path, map_location=device))
-        F.load_state_dict(torch.load(f_model_path, map_location=device))
-        
-        # Status
-        print(f"Inference: Loaded the checkpoints from {iteration}th iteration.")
-    except:
-        # Status
-        print(f"Inference: Couldn't load the checkpoints from {iteration}th iteration.")
-        raise
+        img = Image.open(img_path).convert('RGB')
+        img_tensor = loader(img).unsqueeze(0).to(device)
+    except Exception as e:
+        logger.error(f"Failed to load image: {e}")
+        return
 
-    # Minor transforms
-    if img_size == None:
-        loader = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5] * 3, std=[0.5] * 3)
-        ])
-    else:
-        loader = transforms.Compose([
-            transforms.Resize(img_size),
-            transforms.CenterCrop(img_size),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5] * 3, std=[0.5] * 3)
-        ])
-
-    from PIL import Image
-
-    def image_loader(image_name):
-        image = Image.open(image_name)
-        image = loader(image).unsqueeze(0)  # Add a fake batch dimension
-        return image.to(device, torch.float)
-    
-    # style_a = image_loader(out_img_path)
-    in_img_path = os.path.join(in_img_dir, img_name)
-    in_img = image_loader(in_img_path)
-    
     with torch.no_grad():
-        print("Stylization")
-        sty_img = F(in_img)     # Y -> X
-        print("Reconstruction")
-        rec_img = G(sty_img)    # X -> Y
-    
-    # WARNING: Please do not change this code snippet with a closed mind. 🤪👻
-    iteration = int(iteration / 1000)
-    only_img_name = img_name.split('.')[0]
-    img_type = img_name.split('.')[1]
+        # Using the appropriate generator for stylization
+        # In CycleGAN, usually F is Y -> X and G is X -> Y
+        # For inference, users typically want the stylization (e.g. Photo -> Van Gogh)
+        # Which is G (X -> Y) in this specific implementation's comments
+        sty_img = G(img_tensor)
+        rec_img = F(sty_img)
 
-    # Set up names
-    out_sty_name = f"sty_{only_img_name}_{style}_{iteration}k.{img_type}"
-    out_rec_name = f"rec_{only_img_name}_{style}_{iteration}k.{img_type}"
+    # Naming and paths
+    base_name = os.path.splitext(config.IMG_NAME)[0]
+    ext = os.path.splitext(config.IMG_NAME)[1]
+    iter_k = config.INFER_ITER // 1000
     
-    # Set up paths
-    sty_path = os.path.join(SAMPLE_DIR, style, out_sty_dir, out_sty_name)
-    rec_path = os.path.join(SAMPLE_DIR, style, out_rec_dir, out_rec_name)
+    sty_name = f"sty_{base_name}_{config.INFER_STYLE}_{iter_k}k{ext}"
+    rec_name = f"rec_{base_name}_{config.INFER_STYLE}_{iter_k}k{ext}"
     
-    # Save image grids
+    sty_path = os.path.join(config.SAMPLE_DIR, config.INFER_STYLE, config.OUT_STY_DIR, sty_name)
+    rec_path = os.path.join(config.SAMPLE_DIR, config.INFER_STYLE, config.OUT_REC_DIR, rec_name)
+    
     vutils.save_image(sty_img, sty_path, normalize=True)
     vutils.save_image(rec_img, rec_path, normalize=True)
-    
-    # Status
-    print(f"Saved {rec_path}")
-    print(f"Saved {sty_path}")
-
+    logger.info(f"Saved: {sty_path}\nSaved: {rec_path}")
 
 if __name__ == "__main__":
-    
-    if TRAIN:
+    setup_directories()
+    if config.TRAIN:
         train()
     else:
-        infer(
-            iteration=INFER_ITER,
-            style=INFER_STYLE,
-            img_name=IMG_NAME,
-            in_img_dir=IN_IMG_DIR,
-            out_rec_dir=OUT_REC_DIR,
-            out_sty_dir=OUT_STY_DIR,
-            img_size=IMG_SIZE
-        )
+        infer()
