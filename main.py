@@ -25,11 +25,11 @@ def setup_directories():
     dirs_to_make = []
     if config.TRAIN:
         dirs_to_make.append(config.CKPT_DIR)
-        for style in config.STYLES:
+        for style in config.STYLE_NAMES:
             dirs_to_make.append(os.path.join(config.CKPT_DIR, style))
     else:
         dirs_to_make.append(config.SAMPLE_DIR)
-        for style in config.STYLES:
+        for style in config.STYLE_NAMES:
             style_dir = os.path.join(config.SAMPLE_DIR, style)
             dirs_to_make.extend([
                 style_dir,
@@ -51,27 +51,27 @@ def train():
     X_data, Y_data = load_data()
 
     # Networks
-    C_X = Critic().to(device, memory_format=torch.channels_last)
-    C_Y = Critic().to(device, memory_format=torch.channels_last)
-    G = Generator(upsample=config.UPSAMPLE).to(device, memory_format=torch.channels_last)
-    F = Generator(upsample=config.UPSAMPLE).to(device, memory_format=torch.channels_last)
+    critic_a = Critic().to(device, memory_format=torch.channels_last)
+    critic_b = Critic().to(device, memory_format=torch.channels_last)
+    gen_a2b = Generator(upsample=config.UPSAMPLE).to(device, memory_format=torch.channels_last)
+    gen_b2a = Generator(upsample=config.UPSAMPLE).to(device, memory_format=torch.channels_last)
 
     # Compile models if requested
     if config.USE_COMPILE and hasattr(torch, "compile"):
         try:
             logger.info("Compiling models...")
-            C_X = torch.compile(C_X)
-            C_Y = torch.compile(C_Y)
-            G = torch.compile(G)
-            F = torch.compile(F)
+            critic_a = torch.compile(critic_a)
+            critic_b = torch.compile(critic_b)
+            gen_a2b = torch.compile(gen_a2b)
+            gen_b2a = torch.compile(gen_b2a)
         except Exception as e:
             logger.warning(f"Compilation failed: {e}. Proceeding without compilation.")
 
     # Optimizers
-    C_X_optim = optim.Adam(C_X.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
-    C_Y_optim = optim.Adam(C_Y.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
-    G_optim = optim.Adam(G.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
-    F_optim = optim.Adam(F.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
+    critic_a_optim = optim.Adam(critic_a.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
+    critic_b_optim = optim.Adam(critic_b.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
+    gen_a2b_optim = optim.Adam(gen_a2b.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
+    gen_b2a_optim = optim.Adam(gen_b2a.parameters(), lr=config.LR, betas=(config.BETA1, config.BETA2))
 
     # Mixed Precision Setup
     scaler_c = torch.amp.GradScaler('cuda') if config.USE_AMP and device.type == 'cuda' else None
@@ -81,7 +81,13 @@ def train():
     # Load checkpoints
     if config.BEGIN_ITER > 0:
         try:
-            for net, name in zip([G, F, C_X, C_Y], ["G", "F", "C_X", "C_Y"]):
+            networks_to_load = {
+                gen_a2b: "gen_a2b",
+                gen_b2a: "gen_b2a",
+                critic_a: "critic_a",
+                critic_b: "critic_b"
+            }
+            for net, name in networks_to_load.items():
                 path = os.path.join(config.CKPT_DIR, config.TRAIN_STYLE, f"{name}_{config.BEGIN_ITER}.pth")
                 net.load_state_dict(torch.load(path, map_location=device, weights_only=True))
             logger.info(f"Loaded checkpoints from iteration {config.BEGIN_ITER}")
@@ -92,152 +98,156 @@ def train():
 
     logger.info("Begin training!")
     for i in range(config.BEGIN_ITER, config.END_ITER + 1):
-        x_real, y_real = safe_sampling(X_data, Y_data, device)
-        x_real = x_real.to(memory_format=torch.channels_last)
-        y_real = y_real.to(memory_format=torch.channels_last)
+        real_a, real_b = safe_sampling(X_data, Y_data, device)
+        real_a = real_a.to(memory_format=torch.channels_last)
+        real_b = real_b.to(memory_format=torch.channels_last)
 
         #################
         # Train Critics #
         #################
-        for param in G.parameters(): param.requires_grad = False
-        for param in F.parameters(): param.requires_grad = False
-        for param in C_X.parameters(): param.requires_grad = True
-        for param in C_Y.parameters(): param.requires_grad = True
+        for param in gen_a2b.parameters(): param.requires_grad = False
+        for param in gen_b2a.parameters(): param.requires_grad = False
+        for param in critic_a.parameters(): param.requires_grad = True
+        for param in critic_b.parameters(): param.requires_grad = True
 
         for _ in range(2):
-            C_X_optim.zero_grad(set_to_none=True)
-            C_Y_optim.zero_grad(set_to_none=True)
+            critic_a_optim.zero_grad(set_to_none=True)
+            critic_b_optim.zero_grad(set_to_none=True)
 
             with autocast_ctx:
                 with torch.no_grad():
-                    # X -> Y
-                    G_x = G(x_real)
-                    # Y -> X
-                    F_y = F(y_real)
+                    # A -> B
+                    fake_b = gen_a2b(real_a)
+                    # B -> A
+                    fake_a = gen_b2a(real_b)
                 
                 # Apply DiffAugment to both real and fake
-                # This makes the critic task harder and prevents overfitting on small datasets
-                x_real_aug = DiffAugment(x_real)
-                y_real_aug = DiffAugment(y_real)
-                G_x_aug = DiffAugment(G_x)
-                F_y_aug = DiffAugment(F_y)
+                real_a_aug = DiffAugment(real_a)
+                real_b_aug = DiffAugment(real_b)
+                fake_b_aug = DiffAugment(fake_b)
+                fake_a_aug = DiffAugment(fake_a)
 
-                C_Y_G_x = C_Y(G_x_aug)
-                C_y_y = C_Y(y_real_aug)
-                C_X_F_y = C_X(F_y_aug)
-                C_X_x = C_X(x_real_aug)
+                score_fake_b = critic_b(fake_b_aug)
+                score_real_b = critic_b(real_b_aug)
+                score_fake_a = critic_a(fake_a_aug)
+                score_real_a = critic_a(real_a_aug)
 
                 # QP-div loss calculation
-                x_loss_val = C_X_x - C_X_F_y
+                loss_val_a = score_real_a - score_fake_a
                 if config.NORM == "l1":
-                    x_norm = config.LAMBDA * (x_real_aug - F_y_aug).abs().mean()
+                    norm_a = config.LAMBDA * (real_a_aug - fake_a_aug).abs().mean()
                 else:
-                    x_norm = config.LAMBDA * ((x_real_aug - F_y_aug)**2).mean().sqrt()
-                x_loss = (-x_loss_val + 0.5 * x_loss_val**2 / (x_norm + 1e-8)).mean()
+                    norm_a = config.LAMBDA * ((real_a_aug - fake_a_aug)**2).mean().sqrt()
+                loss_critic_a = (-loss_val_a + 0.5 * loss_val_a**2 / (norm_a + 1e-8)).mean()
 
-                y_loss_val = C_y_y - C_Y_G_x
+                loss_val_b = score_real_b - score_fake_b
                 if config.NORM == "l1":
-                    y_norm = config.LAMBDA * (y_real_aug - G_x_aug).abs().mean()
+                    norm_b = config.LAMBDA * (real_b_aug - fake_b_aug).abs().mean()
                 else:
-                    y_norm = config.LAMBDA * ((y_real_aug - G_x_aug)**2).mean().sqrt()
-                y_loss = (-y_loss_val + 0.5 * y_loss_val**2 / (y_norm + 1e-8)).mean()
+                    norm_b = config.LAMBDA * ((real_b_aug - fake_b_aug)**2).mean().sqrt()
+                loss_critic_b = (-loss_val_b + 0.5 * loss_val_b**2 / (norm_b + 1e-8)).mean()
 
-                c_loss = x_loss + y_loss
+                loss_critic_total = loss_critic_a + loss_critic_b
 
             if scaler_c:
-                scaler_c.scale(c_loss).backward()
-                scaler_c.step(C_X_optim)
-                scaler_c.step(C_Y_optim)
+                scaler_c.scale(loss_critic_total).backward()
+                scaler_c.step(critic_a_optim)
+                scaler_c.step(critic_b_optim)
                 scaler_c.update()
             else:
-                c_loss.backward()
-                C_X_optim.step()
-                C_Y_optim.step()
+                loss_critic_total.backward()
+                critic_a_optim.step()
+                critic_b_optim.step()
 
         ####################
         # Train Generators #
         ####################
-        for param in G.parameters(): param.requires_grad = True
-        for param in F.parameters(): param.requires_grad = True
-        for param in C_X.parameters(): param.requires_grad = False
-        for param in C_Y.parameters(): param.requires_grad = False
+        for param in gen_a2b.parameters(): param.requires_grad = True
+        for param in gen_b2a.parameters(): param.requires_grad = True
+        for param in critic_a.parameters(): param.requires_grad = False
+        for param in critic_b.parameters(): param.requires_grad = False
 
-        G_optim.zero_grad(set_to_none=True)
-        F_optim.zero_grad(set_to_none=True)
+        gen_a2b_optim.zero_grad(set_to_none=True)
+        gen_b2a_optim.zero_grad(set_to_none=True)
 
         with autocast_ctx:
-            G_x = G(x_real)
-            F_y = F(y_real)
+            fake_b = gen_a2b(real_a)
+            fake_a = gen_b2a(real_b)
             
             # Use augmented fakes for adversarial loss
-            G_x_aug = DiffAugment(G_x)
-            F_y_aug = DiffAugment(F_y)
+            fake_b_aug = DiffAugment(fake_b)
+            fake_a_aug = DiffAugment(fake_a)
             # Use augmented reals for adversarial consistency
-            x_real_aug = DiffAugment(x_real)
-            y_real_aug = DiffAugment(y_real)
+            real_a_aug = DiffAugment(real_a)
+            real_b_aug = DiffAugment(real_b)
 
-            C_Y_G_x = C_Y(G_x_aug)
-            C_y_y = C_Y(y_real_aug)
-            C_X_F_y = C_X(F_y_aug)
-            C_X_x = C_X(x_real_aug)
+            score_fake_b = critic_b(fake_b_aug)
+            score_real_b = critic_b(real_b_aug)
+            score_fake_a = critic_a(fake_a_aug)
+            score_real_a = critic_a(real_a_aug)
 
-            F_G_x = F(G_x)
-            G_F_y = G(F_y)
+            rec_a = gen_b2a(fake_b)
+            rec_b = gen_a2b(fake_a)
 
             # Adversarial losses
-            x_adv_loss = (C_X_x - C_X_F_y).mean()
-            y_adv_loss = (C_y_y - C_Y_G_x).mean()
+            loss_adv_a = (score_real_a - score_fake_a).mean()
+            loss_adv_b = (score_real_b - score_fake_b).mean()
 
             # Cycle-consistency & Identity
-            x_cyc_loss = l1_loss(F_G_x, x_real)
-            y_cyc_loss = l1_loss(G_F_y, y_real)
-            x_id_loss = l1_loss(G_x, y_real)
-            y_id_loss = l1_loss(F_y, x_real)
+            loss_cycle_a = l1_loss(rec_a, real_a)
+            loss_cycle_b = l1_loss(rec_b, real_b)
+            loss_id_a = l1_loss(fake_b, real_b)
+            loss_id_b = l1_loss(fake_a, real_a)
 
-            # Dynamic Loss Balancing (Simple version: adjust weights if cycle loss is too high)
-            # This helps the generator prioritize content preservation if it's failing
-            cyc_weight = config.CYC_WEIGHT
-            if (x_cyc_loss + y_cyc_loss) > 0.5: # Threshold example
-                cyc_weight *= 1.1
+            # Dynamic Loss Balancing
+            current_cyc_weight = config.CYC_WEIGHT
+            if (loss_cycle_a + loss_cycle_b) > 0.5:
+                current_cyc_weight *= 1.1
 
-            g_loss = x_adv_loss + y_adv_loss + cyc_weight * (x_cyc_loss + y_cyc_loss) + config.ID_WEIGHT * (x_id_loss + y_id_loss)
+            loss_gen_total = loss_adv_a + loss_adv_b + current_cyc_weight * (loss_cycle_a + loss_cycle_b) + config.ID_WEIGHT * (loss_id_a + loss_id_b)
 
         if scaler_g:
-            scaler_g.scale(g_loss).backward()
-            scaler_g.step(G_optim)
-            scaler_g.step(F_optim)
+            scaler_g.scale(loss_gen_total).backward()
+            scaler_g.step(gen_a2b_optim)
+            scaler_g.step(gen_b2a_optim)
             scaler_g.update()
         else:
-            g_loss.backward()
-            G_optim.step()
-            F_optim.step()
+            loss_gen_total.backward()
+            gen_a2b_optim.step()
+            gen_b2a_optim.step()
 
         if i % config.ITERS_PER_LOG == 0:
-            logger.info(f"Iter: {i} | C loss: {c_loss.item():.4f} | G loss: {g_loss.item():.4f}")
+            logger.info(f"Iter: {i} | Critic Loss: {loss_critic_total.item():.4f} | Gen Loss: {loss_gen_total.item():.4f}")
 
         if i % config.ITERS_PER_CKPT == 0:
-            for net, name in zip([G, F, C_X, C_Y], ["G", "F", "C_X", "C_Y"]):
+            ckpt_map = {
+                gen_a2b: "gen_a2b",
+                gen_b2a: "gen_b2a",
+                critic_a: "critic_a",
+                critic_b: "critic_b"
+            }
+            for net, name in ckpt_map.items():
                 path = os.path.join(config.CKPT_DIR, config.TRAIN_STYLE, f"{name}_{i}.pth")
                 torch.save(net.state_dict(), path)
             logger.info(f"Saved checkpoints at iteration {i}")
 
 def infer():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-    G = Generator(upsample=config.UPSAMPLE).to(device)
-    F = Generator(upsample=config.UPSAMPLE).to(device)
+    gen_a2b = Generator(upsample=config.UPSAMPLE).to(device)
+    gen_b2a = Generator(upsample=config.UPSAMPLE).to(device)
 
     try:
-        g_path = os.path.join(config.CKPT_DIR, config.INFER_STYLE, f"G_{config.INFER_ITER}.pth")
-        f_path = os.path.join(config.CKPT_DIR, config.INFER_STYLE, f"F_{config.INFER_ITER}.pth")
-        G.load_state_dict(torch.load(g_path, map_location=device, weights_only=True))
-        F.load_state_dict(torch.load(f_path, map_location=device, weights_only=True))
+        a2b_path = os.path.join(config.CKPT_DIR, config.INFER_STYLE, f"gen_a2b_{config.INFER_ITER}.pth")
+        b2a_path = os.path.join(config.CKPT_DIR, config.INFER_STYLE, f"gen_b2a_{config.INFER_ITER}.pth")
+        gen_a2b.load_state_dict(torch.load(a2b_path, map_location=device, weights_only=True))
+        gen_b2a.load_state_dict(torch.load(b2a_path, map_location=device, weights_only=True))
         logger.info(f"Loaded checkpoints from iteration {config.INFER_ITER}")
     except Exception as e:
         logger.error(f"Failed to load checkpoints for inference: {e}")
         return
 
-    G.eval()
-    F.eval()
+    gen_a2b.eval()
+    gen_b2a.eval()
 
     # Transformations
     transform_list = []
@@ -255,12 +265,9 @@ def infer():
         return
 
     with torch.no_grad():
-        # Using the appropriate generator for stylization
-        # In CycleGAN, usually F is Y -> X and G is X -> Y
-        # For inference, users typically want the stylization (e.g. Photo -> Van Gogh)
-        # Which is G (X -> Y) in this specific implementation's comments
-        sty_img = G(img_tensor)
-        rec_img = F(sty_img)
+        # Photo -> Style typically
+        sty_img = gen_a2b(img_tensor)
+        rec_img = gen_b2a(sty_img)
 
     # Naming and paths
     base_name = os.path.splitext(config.IMG_NAME)[0]
