@@ -1,4 +1,4 @@
-# Artist Style Transfer Via Quadratic Potential
+# Artist Style Transfer Via Quadratic Potential (2025 Modernized)
 
 [**Rahul Bhalley**](https://github.com/rahulbhalley) and [Jianlin Su](https://github.com/bojone)
 
@@ -6,10 +6,12 @@
 
 ### Abstract
 
-In this paper we address the problem of artist style transfer where the painting style of a given artist is applied on a real world photograph. We train our neural networks in adversarial setting via recently introduced quadratic potential divergence for stable learning process. To further improve the quality of generated artist stylized images we also integrate some of the recently introduced deep learning techniques in our method. To our best knowledge this is the first attempt towards artist style transfer via quadratic potential divergence. We provide some stylized image samples in the supplementary material. The source code for experimentation was written in [PyTorch](https://pytorch.org) and is available online in my [GitHub repository](https://github.com/rahulbhalley/cyclegan-qp).
+In this paper, we address the problem of artist style transfer where the painting style of a given artist is applied to a real-world photograph. We train our neural networks in an adversarial setting via the quadratic potential divergence for a stable learning process. 
 
-If you find our work, or this repository helpful, please consider citing our work with the following BibTex:
-```
+**Update (2025):** This repository has been thoroughly refactored to integrate modern deep learning standards and "tricks" from 2024-2025 research, including Differentiable Augmentation, Self-Attention, and PyTorch 2.5+ optimizations (AMP, `torch.compile`, and Channels Last memory formats).
+
+If you find our work or this repository helpful, please consider citing:
+```bibtex
 @article{bhalley2019artist,
   title={Artist Style Transfer Via Quadratic Potential},
   author={Bhalley, Rahul and Su, Jianlin},
@@ -18,108 +20,89 @@ If you find our work, or this repository helpful, please consider citing our wor
 }
 ```
 
-**NOTE: Pre-trained models are available in [`Google Drive`](https://drive.google.com/drive/folders/1IJ0OswLFD_-P2wgDg6RJhf29AQxYUc0_?usp=sharing). Please download it in the root directory of this repository.**
+### 🚀 2025 Modernization Features
+
+The codebase has been upgraded with the following state-of-the-art GAN training techniques:
+
+*   **Differentiable Augmentation (DiffAugment):** Dramatically improves data efficiency and prevents discriminator overfitting on small artist datasets.
+*   **Self-Attention (SAGAN):** Integrated into both Generator and Critic to capture long-range spatial dependencies for more coherent global structures.
+*   **PyTorch 2.5+ Optimizations:**
+    *   **AMP (Automatic Mixed Precision):** Faster training with lower memory footprint.
+    *   **`torch.compile`:** JIT compilation for optimized execution kernels.
+    *   **Channels Last:** Optimized memory format for NVIDIA Tensor Cores.
+*   **Architectural Upgrades:**
+    *   **GELU Activations:** Smoother gradient flow than standard ReLU.
+    *   **Residual Scaling:** Improved stability for deep transformer blocks.
+    *   **Instance Normalization:** Standardized for high-quality style transfer.
 
 ### Prerequisites
 
-This code was tested in following environment setting:
+- Python (version >= 3.10)
+- [PyTorch](https://github.com/pytorch/pytorch) (version >= 2.4.0)
+- [Torchvision](https://github.com/pytorch/vision) (version >= 0.19.0)
 
-- Python (version >= 3.6.0)
-- [PyTorch](https://github.com/pytorch/pytorch) (version >= 1.0.0)
-- [Torchvision](https://github.com/pytorch/vision) (version = 0.2.1)
+Install dependencies via:
+```bash
+pip install -r requirements.txt
+```
 
 ### Usage
 
-First clone this repository:
-```
-git clone https://github.com/rahulbhalley/cyclegan-qp.git
-```
+1. **Clone & Setup:**
+   ```bash
+   git clone https://github.com/rahulbhalley/cyclegan-qp.git
+   cd cyclegan-qp
+   ```
 
-#### Getting Datasets
+2. **Download Datasets:**
+   ```bash
+   bash download_dataset.sh ukiyoe2photo
+   ```
 
-Enter into the `cyclegan-qp` directory via terminal.
-```
-cd cyclegan-qp
-```
+3. **Run:**
+   Adjust settings in `config.py` (e.g., set `TRAIN = True`), then:
+   ```bash
+   python main.py
+   ```
 
-To download the datasets (for instance, `ukiyoe2photo`) run:
-```
-bash download_dataset.sh ukiyoe2photo
-```
+### Configurations (`config.py`)
 
-Now `ukiyoe2photo` dataset will be downloaded and unzipped in `cyclegan-qp/datasets/ukiyoe2photo` directory.
+The project uses a structured `Config` dataclass for all hyperparameters.
 
-#### Training & Inference
+| Category | Variable | Description |
+| :--- | :--- | :--- |
+| **Optimization** | `USE_AMP` | Enable Mixed Precision (FP16/BF16) |
+| | `USE_COMPILE` | Enable `torch.compile` for speed |
+| | `MATMUL_PRECISION` | Set to 'high' or 'medium' for Tensor Core boost |
+| **GAN Tricks** | `USE_INSTANCE_NORM` | Use InstanceNorm instead of BatchNorm |
+| | `UPSAMPLE` | Use NN-Upsample + Conv to avoid checkerboard artifacts |
+| **Data** | `BATCH_SIZE` | Standard batch size (default: 4) |
+| | `LOAD_DIM / CROP_DIM` | Image resizing and cropping dimensions |
+| **Losses** | `LAMBDA` | Quadratic Potential penalty weight |
+| | `CYC_WEIGHT` | Cycle-consistency weight (default: 10.0) |
+| | `ID_WEIGHT` | Identity loss weight (default: 0.5) |
 
-To train the network set `TRAIN = True` in [config.py](https://github.com/rahulbhalley/cyclegan-qp/blob/main/config.py) and for inference set it to `False`. Then one may only need to execute the following command in terminal.
-```
-python main.py
-```
+### 🛠️ Code Acknowledgments
 
-#### Configurations
+This refactored implementation incorporates high-quality modules from the open-source community:
 
-Following is a list of configurable variables (in [config.py](https://github.com/rahulbhalley/cyclegan-qp/blob/main/config.py)) to perform experiments with different settings.
+*   **DiffAugment Implementation:** The differentiable augmentation logic in `diff_augment.py` is based on the official implementation by **MIT HAN Lab**: [mit-han-lab/data-efficient-gans](https://github.com/mit-han-lab/data-efficient-gans).
+*   **Self-Attention Implementation:** The `SelfAttention` module in `networks.py` follows the architectural standards established in the PyTorch port by **heykeetae**: [heykeetae/Self-Attention-GAN](https://github.com/heykeetae/Self-Attention-GAN).
+*   **CycleGAN-QP Core:** The foundational architecture and Quadratic Potential implementation are based on the original work by **Rahul Bhalley**: [rahulbhalley/cyclegan-qp](https://github.com/rahulbhalley/cyclegan-qp).
 
-##### Data
+### 📚 References
 
-- `DATASET_DIR` - name of directory containing dataset. Default: `"datasets"`.
-- `DATASET_NAME` - name of dataset to use. Default: `"vangogh2photo"`.
-- `LOAD_DIM` - sets the size of images to load. Default: `286`.
-- `CROP_DIM` - square crops the images from center. Default: `256`.
-- `CKPT_DIR` - name of directory to save checkpoints in. Default: `"checkpoints"`.
-- `SAMPLE_DIR` - directory name where inferred samples will be saved. Default: `"samples"`.
+This implementation integrates techniques from the following foundational papers:
 
-##### Quadratic Potential
+1.  **CycleGAN-QP (Ours):** Bhalley, R., & Su, J. (2019). [Artist Style Transfer Via Quadratic Potential](https://arxiv.org/abs/1902.11108). *arXiv*.
+2.  **DiffAugment:** Zhao, S., et al. (2020). [Differentiable Augmentation for Data-Efficient GAN Training](https://arxiv.org/abs/2006.10738). *NeurIPS*.
+3.  **Self-Attention GAN (SAGAN):** Zhang, H., et al. (2019). [Self-Attention Generative Adversarial Networks](https://arxiv.org/abs/1805.08318). *ICML*.
+4.  **GELU:** Hendrycks, D., & Gimpel, K. (2016). [Gaussian Error Linear Units (GELUs)](https://arxiv.org/abs/1606.08415). *arXiv*.
+5.  **Deconvolution Checkerboard:** Odena, A., et al. (2016). [Deconvolution and Checkerboard Artifacts](https://distill.pub/2016/deconv-checkerboard/). *Distill*.
 
-- `LAMBDA` - see equation (1) in [paper](https://arxiv.org/abs/1902.11108). Default: `10.0`.
-- `NORM` - see equation (2) in [paper](https://arxiv.org/abs/1902.11108). Possible values: `"l1"`, `"l2"`. Default: `"l1"`.
-
-##### CycleGAN-QP
-
-- `CYC_WEIGHT` - cycle consistency weight. Default: `10.0`.
-- `ID_WEIGHT` - identity weight. Default: `0.5`.
-
-##### Network
-
-- `N_CHANNELS` - number of channels of images in dataset. Set to `3` for RGB and `1` for grayscale. Default: `3`.
-- `UPSAMPLE` - set `True` to use ([Odena et al., 2016](https://distill.pub/2016/deconv-checkerboard/)) technique but `False` to use vanilla transpose convolution layers in generator networks. Default: `True`.
-
-##### Training
-
-- `RANDOM_SEED` - random seed to reproduce the experiments. Default: `12345`.
-- `BATCH_SIZE` - batch size for training. Default: `4`.
-- `LR` - learning rate. Default: `2e-4`.
-- `BETA1` - hyper-parameter of Adam optimizer. Default: `0.5`.
-- `BETA2` - hyper-parameter of Adam optimizer. Default: `0.999`.
-- `BEGIN_ITER` - if `0` the train begins from start but when set to `> 0` then training continues from `BEGIN_ITER`th checkpoint. Default: `0`.
-- `END_ITER` - number of iteration for training. Default: `15000`.
-- `TRAIN` - set `True` for training CycleGAN-QP but `False` to perform inference (for more inference configurations see next subsection). Default: `True`.
-
-##### Inference
-
-- `INFER_ITER` - performs inference by loading parameters from this checkpoint. Default: `15000`.
-- `INFER_STYLE` - style to be transferred on images. Possible values: `"ce"`, `"mo"`, `"uk"`, `"vg"`. Default: `"vg"`.
-- `IMG_NAME` - name of image to be performed inference on. Default: `"image.jpg"`.
-- `IN_IMG_DIR` - name of directory containing `IMG_NAME`. Default: `"images"`.
-- `OUT_STY_DIR` - name of directory to save inferred `IMG_NAME`. Default: `"sty"`.
-- `OUT_REC_DIR` - name of directory to save recovered (original) `IMG_NAME`. Default: `"rec"`.
-- `IMG_SIZE` - set `None` to infer with the original sized `IMG_NAME` or set some integral value to infer with `IMG_SIZE`. Default: `None`.
-
-##### Logs
-
-- `ITERS_PER_LOG` - iterations duration at which screen logs should be made. Default: `100`
-- `ITERS_PER_CKPT` - iterations duration at which checkpoints should be saved. Default: `1000`
+---
 
 ### Results
-
-The images in each column (from left to right) corresponds to:
-- Original image
-- Paul Cézanne
-- Claude Monet
-- Ukiyo-e
-- Vincent Van Gogh. 
-
-And each row contains a different image.
 
 #### Real Image to Stylized Image
 ![](https://github.com/rahulbhalley/cyclegan-qp/raw/main/assets/grid_sty.jpg)
